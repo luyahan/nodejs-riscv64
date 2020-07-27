@@ -79,7 +79,7 @@ declare_args() {
   v8_enable_vtunetracemark = false
 
   # Sets -dENABLE_HANDLE_ZAPPING.
-  v8_enable_handle_zapping = is_debug
+  v8_enable_handle_zapping = true
 
   # Enable slow dchecks.
   v8_enable_slow_dchecks = false
@@ -547,7 +547,7 @@ config("toolchain") {
 
   # Mips64el/mipsel simulators.
   if (target_is_simulator &&
-      (v8_current_cpu == "mipsel" || v8_current_cpu == "mips64el")) {
+      (v8_current_cpu == "mipsel" || v8_current_cpu == "mips64el" || v8_current_cpu == "riscv64")) {
     defines += [ "_MIPS_TARGET_SIMULATOR" ]
   }
 
@@ -649,6 +649,21 @@ config("toolchain") {
     }
   }
 
+  # Under simulator build, compiler will not provide __riscv_xlen. Define here
+  if (v8_current_cpu == "riscv") {
+    defines += [ "V8_TARGET_ARCH_RISCV" ]
+    defines += [ "__riscv_xlen=32" ]
+  }
+
+  if (v8_current_cpu == "riscv64") {
+    defines += [ "V8_TARGET_ARCH_RISCV64" ]
+    defines += [ "__riscv_xlen=64" ]
+    #FIXME: Temporarily use MIPS macro for the building.
+    defines += [
+        "CAN_USE_FPU_INSTRUCTIONS",
+      ]
+  }
+
   if (v8_current_cpu == "x86") {
     defines += [ "V8_TARGET_ARCH_IA32" ]
     if (is_win) {
@@ -737,7 +752,7 @@ config("toolchain") {
     }
 
     if (v8_current_cpu == "x64" || v8_current_cpu == "arm64" ||
-        v8_current_cpu == "mips64el") {
+        v8_current_cpu == "mips64el" || v8_current_cpu == "riscv64") {
       cflags += [ "-Wshorten-64-to-32" ]
     }
   }
@@ -1641,6 +1656,16 @@ v8_source_set("v8_initializers") {
       ### gcmole(arch:s390) ###
       "src/builtins/s390/builtins-s390.cc",
     ]
+  } else if (v8_current_cpu == "riscv64") {
+    sources += [
+      ### gcmole(arch:riscv64) ###
+      "src/builtins/riscv64/builtins-riscv64.cc",
+    ]
+  }  else if (v8_current_cpu == "riscv") {
+    sources += [
+      ### gcmole(arch:riscv) ###
+      "src/builtins/riscv/builtins-riscv.cc",
+    ]
   }
 
   if (!v8_enable_i18n_support) {
@@ -2298,8 +2323,6 @@ v8_source_set("v8_base_without_compiler") {
     "src/heap/factory-inl.h",
     "src/heap/factory.cc",
     "src/heap/factory.h",
-    "src/heap/finalization-group-cleanup-task.cc",
-    "src/heap/finalization-group-cleanup-task.h",
     "src/heap/gc-idle-time-handler.cc",
     "src/heap/gc-idle-time-handler.h",
     "src/heap/gc-tracer.cc",
@@ -3289,6 +3312,60 @@ v8_source_set("v8_base_without_compiler") {
       "src/regexp/s390/regexp-macro-assembler-s390.h",
       "src/wasm/baseline/s390/liftoff-assembler-s390.h",
     ]
+  } else if (v8_current_cpu == "riscv64") {
+    sources += [  ### gcmole(arch:riscv64) ###
+      "src/codegen/riscv64/assembler-riscv64-inl.h",
+      "src/codegen/riscv64/assembler-riscv64.cc",
+      "src/codegen/riscv64/assembler-riscv64.h",
+      "src/codegen/riscv64/constants-riscv64.cc",
+      "src/codegen/riscv64/constants-riscv64.h",
+      "src/codegen/riscv64/cpu-riscv64.cc",
+      "src/codegen/riscv64/interface-descriptors-riscv64.cc",
+      "src/codegen/riscv64/macro-assembler-riscv64.cc",
+      "src/codegen/riscv64/macro-assembler-riscv64.h",
+      "src/codegen/riscv64/register-riscv64.h",
+      "src/compiler/backend/riscv64/code-generator-riscv64.cc",
+      "src/compiler/backend/riscv64/instruction-codes-riscv64.h",
+      "src/compiler/backend/riscv64/instruction-scheduler-riscv64.cc",
+      "src/compiler/backend/riscv64/instruction-selector-riscv64.cc",
+      "src/debug/riscv64/debug-riscv64.cc",
+      "src/deoptimizer/riscv64/deoptimizer-riscv64.cc",
+      "src/diagnostics/riscv64/disasm-riscv64.cc",
+      "src/execution/riscv64/frame-constants-riscv64.cc",
+      "src/execution/riscv64/frame-constants-riscv64.h",
+      "src/execution/riscv64/simulator-riscv64.cc",
+      "src/execution/riscv64/simulator-riscv64.h",
+      "src/regexp/riscv64/regexp-macro-assembler-riscv64.cc",
+      "src/regexp/riscv64/regexp-macro-assembler-riscv64.h",
+      "src/wasm/baseline/riscv64/liftoff-assembler-riscv64.h",
+    ]
+  } else if (v8_current_cpu == "riscv") {
+    sources += [  ### gcmole(arch:riscv) ###
+      "src/codegen/riscv/assembler-riscv-inl.h",
+      "src/codegen/riscv/assembler-riscv.cc",
+      "src/codegen/riscv/assembler-riscv.h",
+      "src/codegen/riscv/constants-riscv.cc",
+      "src/codegen/riscv/constants-riscv.h",
+      "src/codegen/riscv/cpu-riscv.cc",
+      "src/codegen/riscv/interface-descriptors-riscv.cc",
+      "src/codegen/riscv/macro-assembler-riscv.cc",
+      "src/codegen/riscv/macro-assembler-riscv.h",
+      "src/codegen/riscv/register-riscv.h",
+      "src/compiler/backend/riscv/code-generator-riscv.cc",
+      "src/compiler/backend/riscv/instruction-codes-riscv.h",
+      "src/compiler/backend/riscv/instruction-scheduler-riscv.cc",
+      "src/compiler/backend/riscv/instruction-selector-riscv.cc",
+      "src/debug/riscv/debug-riscv.cc",
+      "src/deoptimizer/riscv/deoptimizer-riscv.cc",
+      "src/diagnostics/riscv/disasm-riscv.cc",
+      "src/execution/riscv/frame-constants-riscv.cc",
+      "src/execution/riscv/frame-constants-riscv.h",
+      "src/execution/riscv/simulator-riscv.cc",
+      "src/execution/riscv/simulator-riscv.h",
+      "src/regexp/riscv/regexp-macro-assembler-riscv.cc",
+      "src/regexp/riscv/regexp-macro-assembler-riscv.h",
+      "src/wasm/baseline/riscv/liftoff-assembler-riscv.h",
+    ]
   }
 
   configs = [ ":internal_config" ]
@@ -3377,7 +3454,8 @@ v8_source_set("v8_base_without_compiler") {
   if (v8_current_cpu == "mips" || v8_current_cpu == "mipsel" ||
       v8_current_cpu == "mips64" || v8_current_cpu == "mips64el" ||
       v8_current_cpu == "ppc" || v8_current_cpu == "ppc64" ||
-      v8_current_cpu == "s390" || v8_current_cpu == "s390x") {
+      v8_current_cpu == "s390" || v8_current_cpu == "s390x" ||
+      v8_current_cpu == "riscv64" || v8_current_cpu == "riscv") {
     libs += [ "atomic" ]
   }
 
@@ -3699,7 +3777,7 @@ v8_component("v8_libbase") {
   }
 
   if (is_ubsan && (v8_current_cpu == "x86" || v8_current_cpu == "arm" ||
-                   v8_current_cpu == "mips")) {
+                   v8_current_cpu == "mips" || v8_current_cpu == "riscv")) {
     # Special UBSan 32-bit requirement.
     sources += [ "src/base/ubsan.cc" ]
   }

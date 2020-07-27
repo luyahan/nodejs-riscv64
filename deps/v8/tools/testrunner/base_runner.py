@@ -112,6 +112,8 @@ SLOW_ARCHS = [
   "mips64el",
   "s390",
   "s390x",
+  "riscv",
+  "riscv64"
 ]
 
 
@@ -345,9 +347,6 @@ class BaseTestRunner(object):
                            "color, mono)")
     parser.add_option("--json-test-results",
                       help="Path to a file for storing json results.")
-    parser.add_option("--junitout", help="File name of the JUnit output")
-    parser.add_option("--junittestsuite", default="v8tests",
-                      help="The testsuite name in the JUnit output file")
     parser.add_option("--exit-after-n-failures", type="int", default=100,
                       help="Exit after the first N failures instead of "
                            "running all tests. Pass 0 to disable this feature.")
@@ -666,6 +665,11 @@ class BaseTestRunner(object):
       self.build_config.mips_arch_variant == "r6" and
       self.build_config.mips_use_msa)
 
+    # FIXME (RISCV): add sim_riscv flags in base_runner.py
+    simd_riscv = False 
+      # (self.build_config.arch in ['riscv', 'riscv64'] and
+      # self.build_config.riscv_use_simd)
+
     mips_arch_variant = (
       self.build_config.arch in ['mipsel', 'mips', 'mips64', 'mips64el'] and
       self.build_config.mips_arch_variant)
@@ -696,6 +700,7 @@ class BaseTestRunner(object):
       "optimize_for_size": "--optimize-for-size" in options.extra_flags,
       "predictable": self.build_config.predictable,
       "simd_mips": simd_mips,
+      "simd_riscv": simd_riscv,
       "simulator_run": False,
       "system": self.target_os,
       "tsan": self.build_config.tsan,
@@ -792,9 +797,6 @@ class BaseTestRunner(object):
 
   def _create_progress_indicators(self, test_count, options):
     procs = [PROGRESS_INDICATORS[options.progress]()]
-    if options.junitout:
-      procs.append(progress.JUnitTestProgressIndicator(options.junitout,
-                                                       options.junittestsuite))
     if options.json_test_results:
       procs.append(progress.JsonTestProgressIndicator(
         self.framework_name,

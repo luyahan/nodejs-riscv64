@@ -129,38 +129,41 @@ namespace {
 // default-constructed StringView instance.
 class EmptyStringBuffer : public StringBuffer {
  public:
-  StringView string() const override { return StringView(); }
+  const StringView& string() override { return string_; }
+
+ private:
+  StringView string_;
 };
 
 // Contains LATIN1 text data or CBOR encoded binary data in a vector.
 class StringBuffer8 : public StringBuffer {
  public:
-  explicit StringBuffer8(std::vector<uint8_t> data) : data_(std::move(data)) {}
+  explicit StringBuffer8(std::vector<uint8_t> data)
+      : data_(std::move(data)), string_(data_.data(), data_.size()) {}
 
-  StringView string() const override {
-    return StringView(data_.data(), data_.size());
-  }
+  const StringView& string() override { return string_; }
 
  private:
   std::vector<uint8_t> data_;
+  StringView string_;
 };
 
 // Contains a 16 bit string (String16).
 class StringBuffer16 : public StringBuffer {
  public:
-  explicit StringBuffer16(String16 data) : data_(std::move(data)) {}
+  explicit StringBuffer16(String16 data)
+      : data_(std::move(data)), string_(data_.characters16(), data_.length()) {}
 
-  StringView string() const override {
-    return StringView(data_.characters16(), data_.length());
-  }
+  const StringView& string() override { return string_; }
 
  private:
   String16 data_;
+  StringView string_;
 };
 }  // namespace
 
 // static
-std::unique_ptr<StringBuffer> StringBuffer::create(StringView string) {
+std::unique_ptr<StringBuffer> StringBuffer::create(const StringView& string) {
   if (string.length() == 0) return std::make_unique<EmptyStringBuffer>();
   if (string.is8Bit()) {
     return std::make_unique<StringBuffer8>(std::vector<uint8_t>(

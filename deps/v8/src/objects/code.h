@@ -425,6 +425,10 @@ class Code : public HeapObject {
       FLAG_enable_embedded_constant_pool ? 28 : 0;
 #elif V8_TARGET_ARCH_S390X
   static constexpr int kHeaderPaddingSize = 0;
+#elif V8_TARGET_ARCH_RISCV64
+  static constexpr int kHeaderPaddingSize = 0;
+#elif V8_TARGET_ARCH_RISCV
+#erro RISCV(32) architecture unsupported yet
 #else
 #error Unknown architecture.
 #endif

@@ -735,7 +735,6 @@ class RuntimeCallTimer final {
   V(ArrayBuffer_Detach)                                    \
   V(ArrayBuffer_New)                                       \
   V(ArrayBuffer_NewBackingStore)                           \
-  V(ArrayBuffer_BackingStore_Reallocate)                   \
   V(Array_CloneElementAt)                                  \
   V(Array_New)                                             \
   V(BigInt64Array_New)                                     \
@@ -989,7 +988,6 @@ class RuntimeCallTimer final {
   V(DeoptimizeCode)                            \
   V(DeserializeContext)                        \
   V(DeserializeIsolate)                        \
-  V(FinalizationGroupCleanupFromTask)          \
   V(FunctionCallback)                          \
   V(FunctionLengthGetter)                      \
   V(FunctionPrototypeGetter)                   \

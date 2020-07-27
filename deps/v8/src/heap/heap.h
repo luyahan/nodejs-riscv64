@@ -263,27 +263,19 @@ class Heap {
   // Don't apply pointer multiplier on Android since it has no swap space and
   // should instead adapt it's heap size based on available physical memory.
   static const int kPointerMultiplier = 1;
-  static const int kHeapLimitMultiplier = 1;
 #else
-  static const int kPointerMultiplier = kTaggedSize / 4;
-  // The heap limit needs to be computed based on the system pointer size
-  // because we want a pointer-compressed heap to have larger limit than
-  // an orinary 32-bit which that is contrained by 2GB virtual address space.
-  static const int kHeapLimitMultiplier = kSystemPointerSize / 4;
+  static const int kPointerMultiplier = i::kTaggedSize / 4;
 #endif
 
   static const size_t kMaxInitialOldGenerationSize =
-      256 * MB * kHeapLimitMultiplier;
+      256 * MB * kPointerMultiplier;
 
   // These constants control heap configuration based on the physical memory.
   static constexpr size_t kPhysicalMemoryToOldGenerationRatio = 4;
-  // Young generation size is the same for compressed heaps and 32-bit heaps.
-  static constexpr size_t kOldGenerationToSemiSpaceRatio =
-      128 * kHeapLimitMultiplier / kPointerMultiplier;
-  static constexpr size_t kOldGenerationToSemiSpaceRatioLowMemory =
-      256 * kHeapLimitMultiplier / kPointerMultiplier;
+  static constexpr size_t kOldGenerationToSemiSpaceRatio = 128;
+  static constexpr size_t kOldGenerationToSemiSpaceRatioLowMemory = 256;
   static constexpr size_t kOldGenerationLowMemory =
-      128 * MB * kHeapLimitMultiplier;
+      128 * MB * kPointerMultiplier;
   static constexpr size_t kNewLargeObjectSpaceToSemiSpaceRatio = 1;
   static constexpr size_t kMinSemiSpaceSize = 512 * KB * kPointerMultiplier;
   static constexpr size_t kMaxSemiSpaceSize = 8192 * KB * kPointerMultiplier;
@@ -795,32 +787,11 @@ class Heap {
   // See also: FLAG_interpreted_frames_native_stack.
   void SetInterpreterEntryTrampolineForProfiling(Code code);
 
-  // Add finalization_group to the end of the dirty_js_finalization_groups list.
+  // Add finalization_group into the dirty_js_finalization_groups list.
   void AddDirtyJSFinalizationGroup(
       JSFinalizationGroup finalization_group,
       std::function<void(HeapObject object, ObjectSlot slot, Object target)>
           gc_notify_updated_slot);
-
-  // Pop and return the head of the dirty_js_finalization_groups list.
-  MaybeHandle<JSFinalizationGroup> TakeOneDirtyJSFinalizationGroup();
-
-  // Called from Heap::NotifyContextDisposed to remove all FinalizationGroups
-  // with {context} from the dirty list when the context e.g. navigates away or
-  // is detached. If the dirty list is empty afterwards, the cleanup task is
-  // aborted if needed.
-  void RemoveDirtyFinalizationGroupsOnContext(NativeContext context);
-
-  inline bool HasDirtyJSFinalizationGroups();
-
-  void PostFinalizationGroupCleanupTaskIfNeeded();
-
-  void set_is_finalization_group_cleanup_task_posted(bool posted) {
-    is_finalization_group_cleanup_task_posted_ = posted;
-  }
-
-  bool is_finalization_group_cleanup_task_posted() {
-    return is_finalization_group_cleanup_task_posted_;
-  }
 
   V8_EXPORT_PRIVATE void KeepDuringJob(Handle<JSReceiver> target);
   void ClearKeptObjects();
@@ -1123,9 +1094,6 @@ class Heap {
   size_t MaxSemiSpaceSize() { return max_semi_space_size_; }
   size_t InitialSemiSpaceSize() { return initial_semispace_size_; }
   size_t MaxOldGenerationSize() { return max_old_generation_size_; }
-
-  // Limit on the max old generation size imposed by the underlying allocator.
-  V8_EXPORT_PRIVATE static size_t AllocatorLimitOnMaxOldGenerationSize();
 
   V8_EXPORT_PRIVATE static size_t HeapSizeFromPhysicalMemory(
       uint64_t physical_memory);
@@ -2169,8 +2137,6 @@ class Heap {
   std::map<int, RetainingPathOption> retaining_path_target_option_;
 
   std::vector<HeapObjectAllocationTracker*> allocation_trackers_;
-
-  bool is_finalization_group_cleanup_task_posted_ = false;
 
   std::unique_ptr<third_party_heap::Heap> tp_heap_;
 

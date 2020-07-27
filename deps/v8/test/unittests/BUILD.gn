@@ -211,7 +211,6 @@ v8_source_set("unittests_sources") {
     "parser/preparser-unittest.cc",
     "profiler/strings-storage-unittest.cc",
     "regress/regress-crbug-1041240-unittest.cc",
-    "regress/regress-crbug-1056054-unittest.cc",
     "regress/regress-crbug-938251-unittest.cc",
     "run-all-unittests.cc",
     "strings/char-predicates-unittest.cc",
@@ -275,6 +274,16 @@ v8_source_set("unittests_sources") {
     sources += [
       "assembler/turbo-assembler-mips64-unittest.cc",
       "compiler/mips64/instruction-selector-mips64-unittest.cc",
+    ]
+  } else if (v8_current_cpu == "riscv64") {
+    sources += [
+      "assembler/turbo-assembler-riscv64-unittest.cc",
+      "compiler/riscv64/instruction-selector-riscv64-unittest.cc",
+    ]
+  } else if (v8_current_cpu == "riscv") {
+    sources += [
+      "assembler/turbo-assembler-riscv-unittest.cc",
+      "compiler/riscv/instruction-selector-riscv-unittest.cc",
     ]
   } else if (v8_current_cpu == "x64") {
     sources += [

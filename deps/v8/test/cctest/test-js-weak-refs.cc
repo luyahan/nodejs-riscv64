@@ -158,17 +158,6 @@ void VerifyWeakCellKeyChain(Isolate* isolate, SimpleNumberDictionary key_map,
   va_end(args);
 }
 
-Handle<JSWeakRef> MakeWeakRefAndKeepDuringJob(Isolate* isolate) {
-  HandleScope inner_scope(isolate);
-
-  Handle<JSObject> js_object =
-      isolate->factory()->NewJSObject(isolate->object_function());
-  Handle<JSWeakRef> inner_weak_ref = ConstructJSWeakRef(js_object, isolate);
-  isolate->heap()->KeepDuringJob(js_object);
-
-  return inner_scope.CloseAndEscape(inner_weak_ref);
-}
-
 }  // namespace
 
 TEST(TestRegister) {
@@ -726,35 +715,30 @@ TEST(TestJSWeakRefKeepDuringJob) {
   LocalContext context;
 
   Isolate* isolate = CcTest::i_isolate();
+  Heap* heap = isolate->heap();
   HandleScope outer_scope(isolate);
-  Handle<JSWeakRef> weak_ref = MakeWeakRefAndKeepDuringJob(isolate);
+  Handle<JSWeakRef> weak_ref;
+  {
+    HandleScope inner_scope(isolate);
+
+    Handle<JSObject> js_object =
+        isolate->factory()->NewJSObject(isolate->object_function());
+    Handle<JSWeakRef> inner_weak_ref = ConstructJSWeakRef(js_object, isolate);
+    heap->KeepDuringJob(js_object);
+
+    weak_ref = inner_scope.CloseAndEscape(inner_weak_ref);
+  }
+
   CHECK(!weak_ref->target().IsUndefined(isolate));
+
   CcTest::CollectAllGarbage();
+
   CHECK(!weak_ref->target().IsUndefined(isolate));
 
   // Clears the KeepDuringJob set.
   context->GetIsolate()->ClearKeptObjects();
   CcTest::CollectAllGarbage();
-  CHECK(weak_ref->target().IsUndefined(isolate));
 
-  weak_ref = MakeWeakRefAndKeepDuringJob(isolate);
-  CHECK(!weak_ref->target().IsUndefined(isolate));
-  CcTest::CollectAllGarbage();
-  CHECK(!weak_ref->target().IsUndefined(isolate));
-
-  // ClearKeptObjects should be called by PerformMicrotasksCheckpoint.
-  CcTest::isolate()->PerformMicrotaskCheckpoint();
-  CcTest::CollectAllGarbage();
-  CHECK(weak_ref->target().IsUndefined(isolate));
-
-  weak_ref = MakeWeakRefAndKeepDuringJob(isolate);
-  CHECK(!weak_ref->target().IsUndefined(isolate));
-  CcTest::CollectAllGarbage();
-  CHECK(!weak_ref->target().IsUndefined(isolate));
-
-  // ClearKeptObjects should be called by MicrotasksScope::PerformCheckpoint.
-  v8::MicrotasksScope::PerformCheckpoint(CcTest::isolate());
-  CcTest::CollectAllGarbage();
   CHECK(weak_ref->target().IsUndefined(isolate));
 }
 
@@ -770,7 +754,17 @@ TEST(TestJSWeakRefKeepDuringJobIncrementalMarking) {
   Isolate* isolate = CcTest::i_isolate();
   Heap* heap = isolate->heap();
   HandleScope outer_scope(isolate);
-  Handle<JSWeakRef> weak_ref = MakeWeakRefAndKeepDuringJob(isolate);
+  Handle<JSWeakRef> weak_ref;
+  {
+    HandleScope inner_scope(isolate);
+
+    Handle<JSObject> js_object =
+        isolate->factory()->NewJSObject(isolate->object_function());
+    Handle<JSWeakRef> inner_weak_ref = ConstructJSWeakRef(js_object, isolate);
+    heap->KeepDuringJob(js_object);
+
+    weak_ref = inner_scope.CloseAndEscape(inner_weak_ref);
+  }
 
   CHECK(!weak_ref->target().IsUndefined(isolate));
 

@@ -69,6 +69,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Pump the message loop and run micro tasks, e.g. GC finalization tasks.
   support->PumpMessageLoop(v8::platform::MessageLoopBehavior::kDoNotWait);
-  isolate->PerformMicrotaskCheckpoint();
+  isolate->RunMicrotasks();
   return 0;
 }

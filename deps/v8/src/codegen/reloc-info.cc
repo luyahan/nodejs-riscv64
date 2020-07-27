@@ -327,9 +327,10 @@ bool RelocInfo::OffHeapTargetIsCodedSpecially() {
 #if defined(V8_TARGET_ARCH_ARM) || defined(V8_TARGET_ARCH_ARM64) || \
     defined(V8_TARGET_ARCH_X64)
   return false;
-#elif defined(V8_TARGET_ARCH_IA32) || defined(V8_TARGET_ARCH_MIPS) || \
-    defined(V8_TARGET_ARCH_MIPS64) || defined(V8_TARGET_ARCH_PPC) ||  \
-    defined(V8_TARGET_ARCH_S390)
+#elif defined(V8_TARGET_ARCH_IA32) || defined(V8_TARGET_ARCH_MIPS) ||  \
+    defined(V8_TARGET_ARCH_MIPS64) || defined(V8_TARGET_ARCH_PPC) ||   \
+    defined(V8_TARGET_ARCH_S390) || defined(V8_TARGET_ARCH_RISCV64) || \
+    defined(V8_TARGET_ARCH_RISCV)
   return true;
 #endif
 }
@@ -520,6 +521,7 @@ void RelocInfo::Verify(Isolate* isolate) {
     }
     case OFF_HEAP_TARGET: {
       Address addr = target_off_heap_target();
+      DEBUG_PRINTF("target_off_heap_target: pc: %lx => addr: %lx\n", pc_, addr);
       CHECK_NE(addr, kNullAddress);
       CHECK(!InstructionStream::TryLookupCode(isolate, addr).is_null());
       break;
