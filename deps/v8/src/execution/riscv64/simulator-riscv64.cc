@@ -83,7 +83,8 @@ uint32_t get_fcsr_condition_bit(uint32_t cc) {
 // field of a subsequent LUI instruction; otherwise returns -1
 static inline int32_t get_ebreak_code(Instruction* instr) {
   DCHECK(instr->InstructionBits() == kBreakInstr);
-  Instruction* next_instr = instr + 1;
+  byte* cur = reinterpret_cast<byte*>(instr);
+  Instruction* next_instr = reinterpret_cast<Instruction*>(cur + kInstrSize);
   if (next_instr->BaseOpcodeFieldRaw() == RO_LUI)
     return (next_instr->Imm20UValue());
   else
@@ -102,7 +103,6 @@ class RiscvDebugger {
  public:
   explicit RiscvDebugger(Simulator* sim) : sim_(sim) {}
 
-  void Stop(Instruction* instr);
   void Debug();
   // Print all registers with a nice formatting.
   void PrintRegs(char name_prefix, int start_index, int end_index);
@@ -124,14 +124,6 @@ class RiscvDebugger {
 inline void UNSUPPORTED() {
   printf("Sim: Unsupported instruction.\n");
   base::OS::Abort();
-}
-
-void RiscvDebugger::Stop(Instruction* instr) {
-  // Get the stop code.
-  int32_t code = get_ebreak_code(instr);
-  DCHECK(code != -1);
-  PrintF("Simulator hit stop (%u)\n", code);
-  Debug();
 }
 
 int64_t RiscvDebugger::GetRegisterValue(int regnum) {
@@ -498,19 +490,7 @@ void RiscvDebugger::Debug() {
         PrintF("No flags on RISC-V !\n");
       } else if (strcmp(cmd, "stop") == 0) {
         int64_t value;
-        intptr_t stop_pc = sim_->get_pc() - 2 * kInstrSize;
-        Instruction* stop_instr = reinterpret_cast<Instruction*>(stop_pc);
-        Instruction* msg_address =
-            reinterpret_cast<Instruction*>(stop_pc + kInstrSize);
-        if ((argc == 2) && (strcmp(arg1, "unstop") == 0)) {
-          // Remove the current stop.
-          if (sim_->IsStopInstruction(stop_instr)) {
-            stop_instr->SetInstructionBits(kNopInstr);
-            msg_address->SetInstructionBits(kNopInstr);
-          } else {
-            PrintF("Not at debugger stop.\n");
-          }
-        } else if (argc == 3) {
+        if (argc == 3) {
           // Print information about all/the specified breakpoint(s).
           if (strcmp(arg1, "info") == 0) {
             if (strcmp(arg2, "all") == 0) {
@@ -617,6 +597,8 @@ void RiscvDebugger::Debug() {
         PrintF("  disasm [[<address/register>] <instructions>]\n");
         PrintF("  Disassemble code, default is 10 instructions\n");
         PrintF("  from pc\n");
+        PrintF("gdb \n");
+        PrintF("  Return to gdb if the simulator was started with gdb\n");
         PrintF("break (alias 'b')\n");
         PrintF("  break : list all breakpoints\n");
         PrintF("  break <address> : set / enable / disable a breakpoint.\n");
@@ -624,28 +606,23 @@ void RiscvDebugger::Debug() {
         PrintF("  tbreak : list all breakpoints\n");
         PrintF("  tbreak <address> : set / enable / disable a temporary breakpoint.\n");
         PrintF("  Set a breakpoint enabled only for one stop. \n");
-        // FIXME (RISCV): the following commands are not yet supported
-        // PrintF("gdb \n");
-        // PrintF("  enter gdb\n");
-        // PrintF("stop feature:\n");
-        // PrintF("  Description:\n");
-        // PrintF("    Stops are debug instructions inserted by\n");
-        // PrintF("    the Assembler::stop() function.\n");
-        // PrintF("    When hitting a stop, the Simulator will\n");
-        // PrintF("    stop and give control to the Debugger.\n");
-        // PrintF("    All stop codes are watched:\n");
-        // PrintF("    - They can be enabled / disabled: the Simulator\n");
-        // PrintF("       will / won't stop when hitting them.\n");
-        // PrintF("    - The Simulator keeps track of how many times they \n");
-        // PrintF("      are met. (See the info command.) Going over a\n");
-        // PrintF("      disabled stop still increases its counter. \n");
-        // PrintF("  Commands:\n");
-        // PrintF("    stop info all/<code> : print infos about number
-        // <code>\n"); PrintF("      or all stop(s).\n"); PrintF("    stop
-        // enable/disable all/<code> : enables / disables\n"); PrintF("      all
-        // or number <code> stop(s)\n"); PrintF("    stop unstop\n"); PrintF("
-        // ignore the stop instruction at the current location\n"); PrintF("
-        // from now on\n");
+        PrintF("stop feature:\n");
+        PrintF("  Description:\n");
+        PrintF("    Stops are debug instructions inserted by\n");
+        PrintF("    the Assembler::stop() function.\n");
+        PrintF("    When hitting a stop, the Simulator will\n");
+        PrintF("    stop and give control to the Debugger.\n");
+        PrintF("    All stop codes are watched:\n");
+        PrintF("    - They can be enabled / disabled: the Simulator\n");
+        PrintF("       will / won't stop when hitting them.\n");
+        PrintF("    - The Simulator keeps track of how many times they \n");
+        PrintF("      are met. (See the info command.) Going over a\n");
+        PrintF("      disabled stop still increases its counter. \n");
+        PrintF("  Commands:\n");
+        PrintF("    stop info all/<code> : print infos about number <code>\n"); 
+        PrintF("      or all stop(s).\n");
+        PrintF("    stop enable/disable all/<code> : enables / disables\n"); 
+        PrintF("      all or number <code> stop(s)\n"); 
       } else {
         PrintF("Unknown command: %s\n", cmd);
       }
@@ -1272,11 +1249,10 @@ void Simulator::TraceMemWr(int64_t addr, T value) {
 }
 
 // RISCV Memory Read/Write functions
-// Compared with mips64, RISCV can support unaligned read/write. EEI decides.
-// FIXME: RISCV porting: Add boundary check and TraceMem* support
-// FIXME: our target board traps on unaligned loads, so need to add detection
-// of unaligned load/store
 
+// FIXME (RISCV): check whether the specific board supports unaligned load/store
+// (determined by EEI). For now, we assume the board does not support unaligned
+// load/store (e.g., trapping)
 template <typename T>
 T Simulator::ReadMem(int64_t addr, Instruction* instr) {
   if (addr >= 0 && addr < 0x400) {
@@ -1552,15 +1528,14 @@ void Simulator::SoftwareInterrupt() {
 
   } else if (func == 1) {  // EBREAK
     int32_t code = get_ebreak_code(instr_.instr());
+    set_pc(get_pc() + kInstrSize * 2);
     if (code != -1 && static_cast<uint32_t>(code) <= kMaxStopCode) {
       if (IsWatchpoint(code)) {
         PrintWatchpoint(code);
       } else {
         IncreaseStopCounter(code);
-        HandleStop(code, instr_.instr());
+        HandleStop(code);
       }
-      // skip the instruction following EBREAK to pass code
-      // set_pc(pc_ + kInstrSize); ????
     } else {
       // All remaining break_ codes, and all traps are handled here.
       RiscvDebugger dbg(this);
@@ -1579,19 +1554,20 @@ bool Simulator::IsWatchpoint(uint64_t code) {
 void Simulator::PrintWatchpoint(uint64_t code) {
   RiscvDebugger dbg(this);
   ++break_count_;
-  PrintF("\n---- break %" PRId64 "  marker: %3d  (instr count: %8" PRId64
+  PrintF("\n---- watchpoint %" PRId64 "  marker: %3d  (instr count: %8" PRId64
          " ) ----------"
          "----------------------------------",
          code, break_count_, icount_);
   dbg.PrintAllRegs();  // Print registers and continue running.
 }
 
-void Simulator::HandleStop(uint64_t code, Instruction* instr) {
+void Simulator::HandleStop(uint64_t code) {
   // Stop if it is enabled, otherwise go on jumping over the stop
   // and the message address.
   if (IsEnabledStop(code)) {
     RiscvDebugger dbg(this);
-    dbg.Stop(instr);
+    PrintF("Simulator hit stop (%" PRId64 ")\n", code);
+    dbg.Debug();
   }
 }
 
@@ -2095,9 +2071,9 @@ void Simulator::DecodeRVRAType() {
         local_monitor_.NotifyStore();
         GlobalMonitor::Get()->NotifyStore_Locked(&global_monitor_thread_);
         WriteMem<int32_t>(rs1(), (int32_t)rs2(), instr_.instr());
-        set_rd(1, false);
-      } else {
         set_rd(0, false);
+      } else {
+        set_rd(1, false);
       }
       break;
     }
@@ -2176,9 +2152,9 @@ void Simulator::DecodeRVRAType() {
               addr, &global_monitor_thread_))) {
         GlobalMonitor::Get()->NotifyStore_Locked(&global_monitor_thread_);
         WriteMem<int64_t>(rs1(), rs2(), instr_.instr());
-        set_rd(1, false);
-      } else {
         set_rd(0, false);
+      } else {
+        set_rd(1, false);
       }
       break;
     }

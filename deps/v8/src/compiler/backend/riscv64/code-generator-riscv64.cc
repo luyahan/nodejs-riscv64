@@ -325,7 +325,7 @@ void EmitWordLoadPoisoningIfNeeded(CodeGenerator* codegen,
     __ bin_instr(i.TempRegister(1), i.OutputRegister(0),                       \
                  Operand(i.InputRegister(2)));                                 \
     __ store_conditional(i.TempRegister(1), MemOperand(i.TempRegister(0), 0)); \
-    __ BranchShort(&binop, eq, i.TempRegister(1), Operand(zero_reg));          \
+    __ BranchShort(&binop, ne, i.TempRegister(1), Operand(zero_reg));          \
     __ sync();                                                                 \
   } while (0)
 
@@ -353,7 +353,7 @@ void EmitWordLoadPoisoningIfNeeded(CodeGenerator* codegen,
     __ InsertBits(i.TempRegister(1), i.TempRegister(2), i.TempRegister(3),     \
                   size);                                                       \
     __ store_conditional(i.TempRegister(1), MemOperand(i.TempRegister(0), 0)); \
-    __ BranchShort(&binop, eq, i.TempRegister(1), Operand(zero_reg));          \
+    __ BranchShort(&binop, ne, i.TempRegister(1), Operand(zero_reg));          \
     __ sync();                                                                 \
   } while (0)
 
@@ -366,7 +366,7 @@ void EmitWordLoadPoisoningIfNeeded(CodeGenerator* codegen,
     __ load_linked(i.OutputRegister(0), MemOperand(i.TempRegister(0), 0));     \
     __ Move(i.TempRegister(1), i.InputRegister(2));                            \
     __ store_conditional(i.TempRegister(1), MemOperand(i.TempRegister(0), 0)); \
-    __ BranchShort(&exchange, eq, i.TempRegister(1), Operand(zero_reg));       \
+    __ BranchShort(&exchange, ne, i.TempRegister(1), Operand(zero_reg));       \
     __ sync();                                                                 \
   } while (0)
 
@@ -392,7 +392,7 @@ void EmitWordLoadPoisoningIfNeeded(CodeGenerator* codegen,
     __ InsertBits(i.TempRegister(2), i.InputRegister(2), i.TempRegister(1),    \
                   size);                                                       \
     __ store_conditional(i.TempRegister(2), MemOperand(i.TempRegister(0), 0)); \
-    __ BranchShort(&exchange, eq, i.TempRegister(2), Operand(zero_reg));       \
+    __ BranchShort(&exchange, ne, i.TempRegister(2), Operand(zero_reg));       \
     __ sync();                                                                 \
   } while (0)
 
@@ -409,7 +409,7 @@ void EmitWordLoadPoisoningIfNeeded(CodeGenerator* codegen,
                    Operand(i.OutputRegister(0)));                              \
     __ Move(i.TempRegister(2), i.InputRegister(3));                            \
     __ store_conditional(i.TempRegister(2), MemOperand(i.TempRegister(0), 0)); \
-    __ BranchShort(&compareExchange, eq, i.TempRegister(2),                    \
+    __ BranchShort(&compareExchange, ne, i.TempRegister(2),                    \
                    Operand(zero_reg));                                         \
     __ bind(&exit);                                                            \
     __ sync();                                                                 \
@@ -442,7 +442,7 @@ void EmitWordLoadPoisoningIfNeeded(CodeGenerator* codegen,
     __ InsertBits(i.TempRegister(2), i.InputRegister(3), i.TempRegister(1),    \
                   size);                                                       \
     __ store_conditional(i.TempRegister(2), MemOperand(i.TempRegister(0), 0)); \
-    __ BranchShort(&compareExchange, eq, i.TempRegister(2),                    \
+    __ BranchShort(&compareExchange, ne, i.TempRegister(2),                    \
                    Operand(zero_reg));                                         \
     __ bind(&exit);                                                            \
     __ sync();                                                                 \
@@ -1214,8 +1214,8 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
           FlagsConditionToConditionCmpFPU(&predicate, instr->flags_condition());
 
       if ((left == kDoubleRegZero || right == kDoubleRegZero) &&
-          !__ IsDoubleZeroRegSet()) {
-        __ Move(kDoubleRegZero, 0.0);
+          !__ IsSingleZeroRegSet()) {
+        __ Move(kDoubleRegZero, 0.0f);
       }
       // compare result set to kScratchReg
       __ CompareF32(kScratchReg, cc, left, right);
@@ -1637,8 +1637,8 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       size_t index = 0;
       MemOperand operand = i.MemoryOperand(&index);
       FPURegister ft = i.InputOrZeroSingleRegister(index);
-      if (ft == kDoubleRegZero && !__ IsDoubleZeroRegSet()) {
-        __ Move(kDoubleRegZero, 0.0);
+      if (ft == kDoubleRegZero && !__ IsSingleZeroRegSet()) {
+        __ Move(kDoubleRegZero, 0.0f);
       }
       __ StoreFloat(ft, operand);
       break;
@@ -1647,8 +1647,8 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       size_t index = 0;
       MemOperand operand = i.MemoryOperand(&index);
       FPURegister ft = i.InputOrZeroSingleRegister(index);
-      if (ft == kDoubleRegZero && !__ IsDoubleZeroRegSet()) {
-        __ Move(kDoubleRegZero, 0.0);
+      if (ft == kDoubleRegZero && !__ IsSingleZeroRegSet()) {
+        __ Move(kDoubleRegZero, 0.0f);
       }
       __ UStoreFloat(ft, operand, kScratchReg);
       break;
@@ -1944,7 +1944,7 @@ void AssembleBranchToLabels(CodeGenerator* gen, TurboAssembler* tasm,
         __ Branch(tlabel, eq, kScratchReg, Operand(zero_reg));
         break;
       default:
-        UNSUPPORTED_COND(kMipsMulOvf, condition);
+        UNSUPPORTED_COND(kRiscvMulOvf32, condition);
         break;
     }
   } else if (instr->arch_opcode() == kRiscvCmp) {
@@ -2277,9 +2277,14 @@ void CodeGenerator::AssembleArchBoolean(Instruction* instr,
              instr->arch_opcode() == kRiscvCmpS) {
     FPURegister left = i.InputOrZeroDoubleRegister(0);
     FPURegister right = i.InputOrZeroDoubleRegister(1);
-    if ((left == kDoubleRegZero || right == kDoubleRegZero) &&
+    if ((instr->arch_opcode() == kRiscvCmpD) &&
+        (left == kDoubleRegZero || right == kDoubleRegZero) &&
         !__ IsDoubleZeroRegSet()) {
       __ Move(kDoubleRegZero, 0.0);
+    } else if ((instr->arch_opcode() == kRiscvCmpS) &&
+               (left == kDoubleRegZero || right == kDoubleRegZero) &&
+               !__ IsSingleZeroRegSet()) {
+      __ Move(kDoubleRegZero, 0.0f);
     }
     bool predicate;
     FlagsConditionToConditionCmpFPU(&predicate, condition);
@@ -2604,10 +2609,10 @@ void CodeGenerator::AssembleMove(InstructionOperand* source,
       if (destination->IsFPStackSlot()) {
         MemOperand dst = g.ToMemOperand(destination);
         if (bit_cast<int32_t>(src.ToFloat32()) == 0) {
-          __ Sd(zero_reg, dst);
+          __ Sw(zero_reg, dst);
         } else {
           __ li(kScratchReg, Operand(bit_cast<int32_t>(src.ToFloat32())));
-          __ Sd(kScratchReg, dst);
+          __ Sw(kScratchReg, dst);
         }
       } else {
         DCHECK(destination->IsFPRegister());
@@ -2635,7 +2640,12 @@ void CodeGenerator::AssembleMove(InstructionOperand* source,
         __ Move(dst, src);
       } else {
         DCHECK(destination->IsFPStackSlot());
-        __ StoreDouble(src, g.ToMemOperand(destination));
+        if (rep == MachineRepresentation::kFloat32) {
+          __ StoreFloat(src, g.ToMemOperand(destination));
+        } else {
+          DCHECK_EQ(rep, MachineRepresentation::kFloat64);
+          __ StoreDouble(src, g.ToMemOperand(destination));
+        }
       }
     }
   } else if (source->IsFPStackSlot()) {
@@ -2646,12 +2656,23 @@ void CodeGenerator::AssembleMove(InstructionOperand* source,
       UNIMPLEMENTED();
     } else {
       if (destination->IsFPRegister()) {
-        __ LoadDouble(g.ToDoubleRegister(destination), src);
+        if (rep == MachineRepresentation::kFloat32) {
+          __ LoadFloat(g.ToDoubleRegister(destination), src);
+        } else {
+          DCHECK_EQ(rep, MachineRepresentation::kFloat64);
+          __ LoadDouble(g.ToDoubleRegister(destination), src);
+        }
       } else {
         DCHECK(destination->IsFPStackSlot());
         FPURegister temp = kScratchDoubleReg;
-        __ LoadDouble(temp, src);
-        __ StoreDouble(temp, g.ToMemOperand(destination));
+        if (rep == MachineRepresentation::kFloat32) {
+          __ LoadFloat(temp, src);
+          __ StoreFloat(temp, g.ToMemOperand(destination));
+        } else {
+          DCHECK_EQ(rep, MachineRepresentation::kFloat64);
+          __ LoadDouble(temp, src);
+          __ StoreDouble(temp, g.ToMemOperand(destination));
+        }
       }
     }
   } else {

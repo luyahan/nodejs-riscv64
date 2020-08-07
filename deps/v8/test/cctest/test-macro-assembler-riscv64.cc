@@ -66,7 +66,6 @@ typedef union {
   double dval;
 } Param_T;
 
-// TODO(mips64): Refine these signatures per test case.
 using FV = void*(int64_t x, int64_t y, int p2, int p3, int p4);
 using F1 = void*(int x, int p1, int p2, int p3, int p4);
 using F3 = void*(void* p, int p1, int p2, int p3, int p4);
@@ -131,7 +130,7 @@ TEST(LoadAddress) {
   __ bind(&skip);
   __ li(a4, Operand(masm->jump_address(&to_jump)), ADDRESS_LOAD);
   int check_size = masm->InstructionsGeneratedSince(&skip);
-  // FIXME (RISCV): current li generates 8 instructions, if the sequence has
+  // NOTE (RISCV): current li generates 8 instructions, if the sequence is
   // changed, need to adjust the CHECK_EQ value too
   CHECK_EQ(8, check_size);
   __ jr(a4);
@@ -1477,7 +1476,7 @@ int32_t run_CompareF(IN_TYPE x1, IN_TYPE x2, bool expected_res,
   MacroAssembler assm(isolate, v8::internal::CodeObjectRequired::kYes);
   MacroAssembler* masm = &assm;
 
-  Label error, done;
+  Label done;
 
   // Vararg f.Call() passes floating-point params via GPRs, so move arguments to
   // FPRs first
@@ -1549,9 +1548,9 @@ static bool Compare(T input1, T input2, FPUCondition cond) {
   switch (cond) {
     case EQ:  // Equal.
       return (input1 == input2);
-    case LT:  // Ordered or Less Than, on Mips release >= 6.
+    case LT:  // Ordered or Less Than
       return (input1 < input2);
-    case LE:  // Ordered or Less Than or Equal, on Mips release >= 6.
+    case LE:  // Ordered or Less Than or Equal
       return (input1 <= input2);
     default:
       UNREACHABLE();

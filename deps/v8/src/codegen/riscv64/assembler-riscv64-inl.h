@@ -36,9 +36,8 @@
 #ifndef V8_CODEGEN_RISCV_ASSEMBLER_RISCV_INL_H_
 #define V8_CODEGEN_RISCV_ASSEMBLER_RISCV_INL_H_
 
-#include "src/codegen/riscv64/assembler-riscv64.h"
-
 #include "src/codegen/assembler.h"
+#include "src/codegen/riscv64/assembler-riscv64.h"
 #include "src/debug/debug.h"
 #include "src/objects/objects-inl.h"
 
@@ -110,41 +109,20 @@ int Assembler::deserialization_special_target_size(
   return kSpecialTargetSize;
 }
 
-// RISCV (FIXME): still use MIPS constant kImm28Mask
 void Assembler::set_target_internal_reference_encoded_at(Address pc,
                                                          Address target) {
-  UNIMPLEMENTED();
-  /*
-    // Encoded internal references are j/jal instructions.
-    Instr instr = Assembler::instr_at(pc + 0 * kInstrSize);
-    DCHECK(IsJump(instr));
-
-    uint64_t imm28 = target & static_cast<uint64_t>(kImm28Mask);
-
-    instr &= ~kImm26Mask;
-    uint64_t imm26 = imm28 >> 2;
-    DCHECK(is_uint26(imm26));
-
-    instr_at_put(pc, instr | (imm26 & kImm26Mask));
-    // Currently used only by deserializer, and all code will be flushed
-    // after complete deserialization, no need to flush on each reference.
-  */
+    set_target_value_at(pc, static_cast<uint64_t>(target));
 }
 
-// FIXME (RISCV): still use MIPS function IsJ
 void Assembler::deserialization_set_target_internal_reference_at(
     Address pc, Address target, RelocInfo::Mode mode) {
-  UNIMPLEMENTED();
-  /*
-
-  if (mode == RelocInfo::INTERNAL_REFERENCE_ENCODED) {
-    DCHECK(IsJ(instr_at(pc)));
+  if (RelocInfo::IsInternalReferenceEncoded(mode)) {
+    DCHECK(IsLui(instr_at(pc)));
     set_target_internal_reference_encoded_at(pc, target);
   } else {
-    DCHECK(mode == RelocInfo::INTERNAL_REFERENCE);
+    DCHECK(RelocInfo::IsInternalReference(mode));
     Memory<Address>(pc) = target;
   }
-  */
 }
 
 HeapObject RelocInfo::target_object() {
@@ -187,22 +165,15 @@ void RelocInfo::set_target_external_reference(
                                    icache_flush_mode);
 }
 
-// FIXME (RISCV): still use MIPS constant kImm26Mask
 Address RelocInfo::target_internal_reference() {
   if (rmode_ == INTERNAL_REFERENCE) {
     return Memory<Address>(pc_);
   } else {
-    UNIMPLEMENTED();
-    /*
     // Encoded internal references are j/jal instructions.
     DCHECK(rmode_ == INTERNAL_REFERENCE_ENCODED);
-    Instr instr = Assembler::instr_at(pc_ + 0 * kInstrSize);
-    DCHECK(Assembler::IsJump(instr));
-    instr &= kImm26Mask;
-    uint64_t imm28 = instr << 2;
-    uint64_t segment = pc_ & ~static_cast<uint64_t>(kImm28Mask);
-    return static_cast<Address>(segment | imm28);
-    */
+    DCHECK(Assembler::IsLui(Assembler::instr_at(pc_ + 0 * kInstrSize)));
+    Address address = Assembler::target_address_at(pc_);
+    return address;
   }
 }
 
@@ -252,45 +223,11 @@ void Assembler::CheckBuffer() {
   }
 }
 
-// FIXME (RISCV): MIPS constants SPECIAL and SLL are still in use
-void Assembler::CheckForEmitInForbiddenSlot() {
-  if (!is_buffer_growth_blocked()) {
-    CheckBuffer();
-  }
-  if (IsPrevInstrCompactBranch()) {
-    UNIMPLEMENTED();
-    /*
-    // Nop instruction to precede a CTI in forbidden slot:
-    Instr nop = SPECIAL | SLL;
-    *reinterpret_cast<Instr*>(pc_) = nop;
-    pc_ += kInstrSize;
-
-    ClearCompactBranchState();
-    */
-  }
-}
-
-// FIXME (RISCV): MIPS constants SPECIAL and SLL are still in use
-void Assembler::EmitHelper(Instr x, CompactBranchType is_compact_branch) {
-  if (IsPrevInstrCompactBranch()) {
-    UNIMPLEMENTED();
-    /*
-    if (Instruction::IsForbiddenAfterBranchInstr(x)) {
-      // Nop instruction to precede a CTI in forbidden slot:
-      Instr nop = SPECIAL | SLL;
-      *reinterpret_cast<Instr*>(pc_) = nop;
-      pc_ += kInstrSize;
-    }
-    ClearCompactBranchState();
-    */
-  }
+void Assembler::EmitHelper(Instr x) {
   DEBUG_PRINTF("%p: ", pc_);
   disassembleInstr(x);
   *reinterpret_cast<Instr*>(pc_) = x;
   pc_ += kInstrSize;
-  if (is_compact_branch == CompactBranchType::COMPACT_BRANCH) {
-    EmittedCompactBranchInstruction();
-  }
   CheckTrampolinePoolQuick();
 }
 
@@ -317,15 +254,15 @@ void Assembler::EmitHelper(uint8_t x) {
   }
 }
 
-void Assembler::emit(Instr x, CompactBranchType is_compact_branch) {
+void Assembler::emit(Instr x) {
   if (!is_buffer_growth_blocked()) {
     CheckBuffer();
   }
-  EmitHelper(x, is_compact_branch);
+  EmitHelper(x);
 }
 
 void Assembler::emit(uint64_t data) {
-  CheckForEmitInForbiddenSlot();
+  if (!is_buffer_growth_blocked()) CheckBuffer();
   EmitHelper(data);
 }
 

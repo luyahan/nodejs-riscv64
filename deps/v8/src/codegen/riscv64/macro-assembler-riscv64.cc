@@ -500,7 +500,7 @@ void TurboAssembler::Mulhu32(Register rd, Register rs, const Operand& rt,
   else
     RV_li(rtz, rt.immediate() << 32);
   mulhu(rd, rsz, rtz);
-  srli(rd, rd, 32);
+  srai(rd, rd, 32);
 }
 
 void TurboAssembler::Mul64(Register rd, Register rs, const Operand& rt) {
@@ -1484,6 +1484,7 @@ void TurboAssembler::li(Register rd, Operand j, LiFlags mode) {
   } else if (mode == ADDRESS_LOAD) {
     // We always need the same number of instructions as we may need to patch
     // this code to load another value which may need all 8 instructions.
+    RecordRelocInfo(RelocInfo::INTERNAL_REFERENCE_ENCODED);
     li_constant(rd, j.immediate());
   } else {  // mode == CONSTANT_SIZE - always emit the same instruction
             // sequence.
@@ -1612,7 +1613,9 @@ void TurboAssembler::Ext32(Register rt, Register rs, uint16_t pos,
   DCHECK_LT(pos + size, 33);
   // RISC-V does not have an extract-type instruction, so we need to use shifts
   slliw(rt, rs, 32 - (pos + size));
-  srliw(rt, rt, 32 - size);
+  if (size != 32) {
+    srliw(rt, rt, 32 - size);
+  }
 }
 
 void TurboAssembler::Ext64(Register rt, Register rs, uint16_t pos,
@@ -2047,10 +2050,10 @@ void TurboAssembler::CompareF64(Register rd, FPUCondition cc, FPURegister cmp1,
     case EQ:  // Equal.
       feq_d(rd, cmp1, cmp2);
       break;
-    case LT:  // Ordered or Less Than, on Mips release >= 6.
+    case LT:  // Ordered or Less Than
       flt_d(rd, cmp1, cmp2);
       break;
-    case LE:  // Ordered or Less Than or Equal, on Mips release >= 6.
+    case LE:  // Ordered or Less Than or Equal
       fle_d(rd, cmp1, cmp2);
       break;
     default:
@@ -2162,10 +2165,24 @@ void TurboAssembler::Move(FPURegister dst, Register src_low,
 }
 
 void TurboAssembler::Move(FPURegister dst, uint32_t src) {
-  UseScratchRegisterScope temps(this);
-  Register scratch = temps.Acquire();
-  li(scratch, Operand(static_cast<int32_t>(src)));
-  fmv_w_x(dst, scratch);
+  // Handle special values first.
+  if (src == bit_cast<uint32_t>(0.0f) && has_single_zero_reg_set_) {
+    Move_s(dst, kDoubleRegZero);
+  } else if (src == bit_cast<uint32_t>(-0.0f) && has_single_zero_reg_set_) {
+    Neg_s(dst, kDoubleRegZero);
+  } else {
+    if (dst == kDoubleRegZero) {
+      DCHECK(src == bit_cast<uint32_t>(0.0f));
+      fmv_w_x(dst, zero_reg);
+      has_single_zero_reg_set_ = true;
+      has_double_zero_reg_set_ = false;
+    } else {
+      UseScratchRegisterScope temps(this);
+      Register scratch = temps.Acquire();
+      li(scratch, Operand(static_cast<int32_t>(src)));
+      fmv_w_x(dst, scratch);
+    }
+  }
 }
 
 void TurboAssembler::Move(FPURegister dst, uint64_t src) {
@@ -2179,6 +2196,7 @@ void TurboAssembler::Move(FPURegister dst, uint64_t src) {
       DCHECK(src == bit_cast<uint64_t>(0.0));
       fmv_d_x(dst, zero_reg);
       has_double_zero_reg_set_ = true;
+      has_single_zero_reg_set_ = false;
     } else {
       UseScratchRegisterScope temps(this);
       Register scratch = temps.Acquire();
@@ -3205,8 +3223,7 @@ void TurboAssembler::BranchAndLinkLong(Label* L) {
 }
 
 void TurboAssembler::DropAndRet(int drop) {
-  DCHECK(is_int12(drop * kPointerSize));
-  addi(sp, sp, drop * kPointerSize);
+  Add64(sp, sp, drop * kPointerSize);
   Ret();
 }
 
@@ -3261,7 +3278,7 @@ void TurboAssembler::Call(Label* target) { BranchAndLink(target); }
 
 void TurboAssembler::LoadAddress(Register dst, Label* target) {
   uint64_t address = jump_address(target);
-  li(dst, address);
+  li(dst, address, ADDRESS_LOAD);
 }
 
 void TurboAssembler::Push(Smi smi) {
@@ -4287,8 +4304,6 @@ void TurboAssembler::CallCFunctionHelper(Register function,
   // provides more information.
   // The argument stots are presumed to have been set up by
   // PrepareCallCFunction.
-  // FIXME(RISC-V): The MIPS ABI requires a C function must be called via t9,
-  //                does RISC-V have a similar requirement? We currently use t6
 
 #if V8_HOST_ARCH_RISCV64
   if (emit_debug_code()) {
