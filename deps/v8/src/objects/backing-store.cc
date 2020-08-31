@@ -28,7 +28,8 @@ constexpr bool kUseGuardRegions = true;
 constexpr bool kUseGuardRegions = false;
 #endif
 
-#if V8_TARGET_ARCH_MIPS64
+#if V8_TARGET_ARCH_MIPS64 || V8_TARGET_ARCH_RISCV64
+// FIXME(RISCV): Check this value
 // MIPS64 has a user space of 2^40 bytes on most processors,
 // address space limits needs to be smaller.
 constexpr size_t kAddressSpaceLimit = 0x8000000000L;  // 512 GiB
@@ -36,6 +37,10 @@ constexpr size_t kAddressSpaceLimit = 0x8000000000L;  // 512 GiB
 constexpr size_t kAddressSpaceLimit = 0x10100000000L;  // 1 TiB + 4 GiB
 #else
 constexpr size_t kAddressSpaceLimit = 0xC0000000;  // 3 GiB
+#endif
+
+#if V8_TARGET_ARCH_RISCV
+#erro RISCV(32) architecture not supported
 #endif
 
 constexpr uint64_t kOneGiB = 1024 * 1024 * 1024;
@@ -559,21 +564,6 @@ std::unique_ptr<BackingStore> BackingStore::EmptyBackingStore(
                                  false);   // custom_deleter
 
   return std::unique_ptr<BackingStore>(result);
-}
-
-bool BackingStore::Reallocate(Isolate* isolate, size_t new_byte_length) {
-  CHECK(!is_wasm_memory_ && !custom_deleter_ && !globally_registered_ &&
-        free_on_destruct_);
-  auto allocator = get_v8_api_array_buffer_allocator();
-  CHECK_EQ(isolate->array_buffer_allocator(), allocator);
-  CHECK_EQ(byte_length_, byte_capacity_);
-  void* new_start =
-      allocator->Reallocate(buffer_start_, byte_length_, new_byte_length);
-  if (!new_start) return false;
-  buffer_start_ = new_start;
-  byte_capacity_ = new_byte_length;
-  byte_length_ = new_byte_length;
-  return true;
 }
 
 v8::ArrayBuffer::Allocator* BackingStore::get_v8_api_array_buffer_allocator() {

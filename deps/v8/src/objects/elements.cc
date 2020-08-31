@@ -1549,13 +1549,11 @@ class DictionaryElementsAccessor
     PropertyFilter filter = keys->filter();
     ReadOnlyRoots roots(isolate);
     for (InternalIndex i : dictionary->IterateEntries()) {
-      AllowHeapAllocation allow_gc;
       Object raw_key = dictionary->KeyAt(i);
       if (!dictionary->IsKey(roots, raw_key)) continue;
       uint32_t key = FilterKey(dictionary, i, raw_key, filter);
       if (key == kMaxUInt32) {
-        // This might allocate, but {raw_key} is not used afterwards.
-        keys->AddShadowingKey(raw_key, &allow_gc);
+        keys->AddShadowingKey(raw_key);
         continue;
       }
       elements->set(insertion_index, raw_key);

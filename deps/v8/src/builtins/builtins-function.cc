@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/api/api-inl.h"
 #include "src/builtins/builtins-utils-inl.h"
 #include "src/builtins/builtins.h"
 #include "src/codegen/code-factory.h"
@@ -32,12 +31,7 @@ MaybeHandle<Object> CreateDynamicFunction(Isolate* isolate,
 
   if (!Builtins::AllowDynamicFunction(isolate, target, target_global_proxy)) {
     isolate->CountUsage(v8::Isolate::kFunctionConstructorReturnedUndefined);
-    // TODO(verwaest): We would like to throw using the calling context instead
-    // of the entered context but we don't currently have access to that.
-    HandleScopeImplementer* impl = isolate->handle_scope_implementer();
-    SaveAndSwitchContext save(
-        isolate, impl->LastEnteredOrMicrotaskContext()->native_context());
-    THROW_NEW_ERROR(isolate, NewTypeError(MessageTemplate::kNoAccess), Object);
+    return isolate->factory()->undefined_value();
   }
 
   // Build the source string.

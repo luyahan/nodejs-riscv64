@@ -26,6 +26,10 @@
 #include "src/execution/mips64/simulator-mips64.h"
 #elif V8_TARGET_ARCH_S390
 #include "src/execution/s390/simulator-s390.h"
+#elif V8_TARGET_ARCH_RISCV64
+#include "src/execution/riscv64/simulator-riscv64.h"
+#elif V8_TARGET_ARCH_RISCV
+#include "src/execution/riscv/simulator-riscv.h"
 #else
 #error Unsupported target architecture.
 #endif

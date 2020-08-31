@@ -19,8 +19,11 @@
  */
 int ZLIB_INTERNAL arm_cpu_enable_crc32 = 0;
 int ZLIB_INTERNAL arm_cpu_enable_pmull = 0;
+int ZLIB_INTERNAL x86_cpu_enable_sse2 = 0;
 int ZLIB_INTERNAL x86_cpu_enable_ssse3 = 0;
 int ZLIB_INTERNAL x86_cpu_enable_simd = 0;
+
+#ifndef CPU_NO_SIMD
 
 #if defined(ARMV8_OS_ANDROID) || defined(ARMV8_OS_LINUX) || defined(ARMV8_OS_FUCHSIA)
 #include <pthread.h>
@@ -125,15 +128,19 @@ static void _cpu_check_features(void)
     int x86_cpu_has_sse42;
     int x86_cpu_has_pclmulqdq;
     int abcd[4];
+
 #ifdef _MSC_VER
     __cpuid(abcd, 1);
 #else
     __cpuid(1, abcd[0], abcd[1], abcd[2], abcd[3]);
 #endif
+
     x86_cpu_has_sse2 = abcd[3] & 0x4000000;
     x86_cpu_has_ssse3 = abcd[2] & 0x000200;
     x86_cpu_has_sse42 = abcd[2] & 0x100000;
     x86_cpu_has_pclmulqdq = abcd[2] & 0x2;
+
+    x86_cpu_enable_sse2 = x86_cpu_has_sse2;
 
     x86_cpu_enable_ssse3 = x86_cpu_has_ssse3;
 
@@ -141,5 +148,6 @@ static void _cpu_check_features(void)
                           x86_cpu_has_sse42 &&
                           x86_cpu_has_pclmulqdq;
 }
+#endif
 #endif
 #endif

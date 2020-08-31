@@ -291,6 +291,12 @@ void* OS::GetRandomMmapAddr() {
   // 42 bits of virtual addressing. Truncate to 40 bits to allow kernel chance
   // to fulfill request.
   raw_addr &= uint64_t{0xFFFFFF0000};
+#elif V8_TARGET_ARCH_RISCV64
+  // FIXME(RISCV): We need more information from the kernel to correctly mask
+  // this address for RISC-V.
+  raw_addr &= uint64_t{0xFFFFFF0000};
+#elif V8_TARGET_ARCH_RISCV
+  #error RISCV archiecture not supported
 #else
   raw_addr &= 0x3FFFF000;
 
@@ -473,6 +479,8 @@ void OS::DebugBreak() {
 #elif V8_HOST_ARCH_S390
   // Software breakpoint instruction is 0x0001
   asm volatile(".word 0x0001");
+#elif V8_HOST_ARCH_RISCV64 || V8_HOST_ARCH_RISCV
+  asm("ebreak");
 #else
 #error Unsupported host architecture.
 #endif
@@ -802,7 +810,8 @@ static void* ThreadEntry(void* arg) {
 
 
 void Thread::set_name(const char* name) {
-  strncpy(name_, name, sizeof(name_));
+  //RISCV-PORT: -1 to overcome gcc9 -Werror=stringop-truncation
+  strncpy(name_, name, sizeof(name_) - 1);
   name_[sizeof(name_) - 1] = '\0';
 }
 

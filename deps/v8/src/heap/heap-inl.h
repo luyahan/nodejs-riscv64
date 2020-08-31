@@ -65,14 +65,7 @@ int64_t Heap::external_memory() {
 }
 
 void Heap::update_external_memory(int64_t delta) {
-  const int64_t amount = isolate()->isolate_data()->external_memory_ + delta;
-  isolate()->isolate_data()->external_memory_ = amount;
-  if (amount <
-      isolate()->isolate_data()->external_memory_low_since_mark_compact_) {
-    isolate()->isolate_data()->external_memory_low_since_mark_compact_ = amount;
-    isolate()->isolate_data()->external_memory_limit_ =
-        amount + kExternalAllocationSoftLimit;
-  }
+  isolate()->isolate_data()->external_memory_ += delta;
 }
 
 void Heap::update_external_memory_concurrently_freed(uintptr_t freed) {
@@ -80,8 +73,8 @@ void Heap::update_external_memory_concurrently_freed(uintptr_t freed) {
 }
 
 void Heap::account_external_memory_concurrently_freed() {
-  update_external_memory(
-      -static_cast<int64_t>(external_memory_concurrently_freed_));
+  isolate()->isolate_data()->external_memory_ -=
+      external_memory_concurrently_freed_;
   external_memory_concurrently_freed_ = 0;
 }
 
@@ -613,10 +606,6 @@ void Heap::IncrementExternalBackingStoreBytes(ExternalBackingStoreType type,
 void Heap::DecrementExternalBackingStoreBytes(ExternalBackingStoreType type,
                                               size_t amount) {
   base::CheckedDecrement(&backing_store_bytes_, amount);
-}
-
-bool Heap::HasDirtyJSFinalizationGroups() {
-  return !dirty_js_finalization_groups().IsUndefined(isolate());
 }
 
 AlwaysAllocateScope::AlwaysAllocateScope(Heap* heap) : heap_(heap) {

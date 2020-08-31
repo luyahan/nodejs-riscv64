@@ -33,7 +33,6 @@
 #include "src/heap/combined-heap.h"
 #include "src/heap/concurrent-marking.h"
 #include "src/heap/embedder-tracing.h"
-#include "src/heap/finalization-group-cleanup-task.h"
 #include "src/heap/gc-idle-time-handler.h"
 #include "src/heap/gc-tracer.h"
 #include "src/heap/heap-controller.h"
@@ -236,7 +235,7 @@ size_t Heap::HeapSizeFromPhysicalMemory(uint64_t physical_memory) {
   // Compute the old generation size and cap it.
   uint64_t old_generation = physical_memory /
                             kPhysicalMemoryToOldGenerationRatio *
-                            kHeapLimitMultiplier;
+                            kPointerMultiplier;
   old_generation =
       Min<uint64_t>(old_generation, MaxOldGenerationSize(physical_memory));
   old_generation = Max<uint64_t>(old_generation, V8HeapTrait::kMinSize);
@@ -281,28 +280,18 @@ size_t Heap::MinOldGenerationSize() {
   return paged_space_count * Page::kPageSize;
 }
 
-size_t Heap::AllocatorLimitOnMaxOldGenerationSize() {
-#ifdef V8_COMPRESS_POINTERS
-  // Isolate and the young generation are also allocated on the heap.
-  return kPtrComprHeapReservationSize -
-         YoungGenerationSizeFromSemiSpaceSize(kMaxSemiSpaceSize) -
-         RoundUp(sizeof(Isolate), size_t{1} << kPageSizeBits);
-#endif
-  return std::numeric_limits<size_t>::max();
-}
-
 size_t Heap::MaxOldGenerationSize(uint64_t physical_memory) {
   size_t max_size = V8HeapTrait::kMaxSize;
   // Finch experiment: Increase the heap size from 2GB to 4GB for 64-bit
   // systems with physical memory bigger than 16GB. The physical memory
   // is rounded up to GB.
-  constexpr bool x64_bit = Heap::kHeapLimitMultiplier >= 2;
+  constexpr bool x64_bit = Heap::kPointerMultiplier >= 2;
   if (FLAG_huge_max_old_generation_size && x64_bit &&
       (physical_memory + 512 * MB) / GB >= 16) {
     DCHECK_EQ(max_size / GB, 2);
     max_size *= 2;
   }
-  return Min(max_size, AllocatorLimitOnMaxOldGenerationSize());
+  return max_size;
 }
 
 size_t Heap::YoungGenerationSizeFromSemiSpaceSize(size_t semi_space_size) {
@@ -1198,11 +1187,17 @@ void Heap::GarbageCollectionEpilogue() {
     ReduceNewSpaceSize();
   }
 
-  if (FLAG_harmony_weak_refs &&
-      isolate()->host_cleanup_finalization_group_callback()) {
+  if (FLAG_harmony_weak_refs) {
     HandleScope handle_scope(isolate());
-    Handle<JSFinalizationGroup> finalization_group;
-    while (TakeOneDirtyJSFinalizationGroup().ToHandle(&finalization_group)) {
+    while (!isolate()->heap()->dirty_js_finalization_groups().IsUndefined(
+        isolate())) {
+      Handle<JSFinalizationGroup> finalization_group(
+          JSFinalizationGroup::cast(
+              isolate()->heap()->dirty_js_finalization_groups()),
+          isolate());
+      isolate()->heap()->set_dirty_js_finalization_groups(
+          finalization_group->next());
+      finalization_group->set_next(ReadOnlyRoots(isolate()).undefined_value());
       isolate()->RunHostCleanupFinalizationGroupCallback(finalization_group);
     }
   }
@@ -1447,7 +1442,7 @@ void Heap::ReportExternalMemoryPressure() {
           kGCCallbackFlagSynchronousPhantomCallbackProcessing |
           kGCCallbackFlagCollectAllExternalMemory);
   if (isolate()->isolate_data()->external_memory_ >
-      (isolate()->isolate_data()->external_memory_low_since_mark_compact_ +
+      (isolate()->isolate_data()->external_memory_at_last_mark_compact_ +
        external_memory_hard_limit())) {
     CollectAllGarbage(
         kReduceMemoryFootprintMask,
@@ -1657,9 +1652,6 @@ int Heap::NotifyContextDisposed(bool dependant_context) {
     memory_reducer_->NotifyPossibleGarbage(event);
   }
   isolate()->AbortConcurrentOptimization(BlockingBehavior::kDontBlock);
-  if (!isolate()->context().is_null()) {
-    RemoveDirtyFinalizationGroupsOnContext(isolate()->raw_native_context());
-  }
 
   number_of_disposed_maps_ = retained_maps().length();
   tracer()->AddContextDisposalTime(MonotonicallyIncreasingTimeInMs());
@@ -2141,7 +2133,7 @@ void Heap::RecomputeLimits(GarbageCollector collector) {
 
   if (collector == MARK_COMPACTOR) {
     // Register the amount of external allocated memory.
-    isolate()->isolate_data()->external_memory_low_since_mark_compact_ =
+    isolate()->isolate_data()->external_memory_at_last_mark_compact_ =
         isolate()->isolate_data()->external_memory_;
     isolate()->isolate_data()->external_memory_limit_ =
         isolate()->isolate_data()->external_memory_ +
@@ -3822,8 +3814,7 @@ bool Heap::InvokeNearHeapLimitCallback() {
     size_t heap_limit = callback(data, max_old_generation_size_,
                                  initial_max_old_generation_size_);
     if (heap_limit > max_old_generation_size_) {
-      max_old_generation_size_ =
-          Min(heap_limit, AllocatorLimitOnMaxOldGenerationSize());
+      max_old_generation_size_ = heap_limit;
       return true;
     }
   }
@@ -4557,8 +4548,6 @@ void Heap::ConfigureHeap(const v8::ResourceConstraints& constraints) {
     max_old_generation_size_ =
         Max(max_old_generation_size_, MinOldGenerationSize());
     max_old_generation_size_ =
-        Min(max_old_generation_size_, AllocatorLimitOnMaxOldGenerationSize());
-    max_old_generation_size_ =
         RoundDown<Page::kPageSize>(max_old_generation_size_);
 
     max_global_memory_size_ =
@@ -4741,12 +4730,12 @@ size_t Heap::GlobalSizeOfObjects() {
 uint64_t Heap::PromotedExternalMemorySize() {
   IsolateData* isolate_data = isolate()->isolate_data();
   if (isolate_data->external_memory_ <=
-      isolate_data->external_memory_low_since_mark_compact_) {
+      isolate_data->external_memory_at_last_mark_compact_) {
     return 0;
   }
   return static_cast<uint64_t>(
       isolate_data->external_memory_ -
-      isolate_data->external_memory_low_since_mark_compact_);
+      isolate_data->external_memory_at_last_mark_compact_);
 }
 
 bool Heap::AllocationLimitOvershotByLargeMargin() {
@@ -4869,7 +4858,7 @@ Heap::IncrementalMarkingLimit Heap::IncrementalMarkingLimitReached() {
     double gained_since_last_gc =
         PromotedSinceLastGC() +
         (isolate()->isolate_data()->external_memory_ -
-         isolate()->isolate_data()->external_memory_low_since_mark_compact_);
+         isolate()->isolate_data()->external_memory_at_last_mark_compact_);
     double size_before_gc =
         OldGenerationObjectsAndPromotedExternalMemorySize() -
         gained_since_last_gc;
@@ -6000,25 +5989,11 @@ void Heap::SetInterpreterEntryTrampolineForProfiling(Code code) {
   set_interpreter_entry_trampoline_for_profiling(code);
 }
 
-void Heap::PostFinalizationGroupCleanupTaskIfNeeded() {
-  DCHECK(!isolate()->host_cleanup_finalization_group_callback());
-  // Only one cleanup task is posted at a time.
-  if (!HasDirtyJSFinalizationGroups() ||
-      is_finalization_group_cleanup_task_posted_) {
-    return;
-  }
-  auto taskrunner = V8::GetCurrentPlatform()->GetForegroundTaskRunner(
-      reinterpret_cast<v8::Isolate*>(isolate()));
-  auto task = std::make_unique<FinalizationGroupCleanupTask>(this);
-  taskrunner->PostNonNestableTask(std::move(task));
-  is_finalization_group_cleanup_task_posted_ = true;
-}
-
 void Heap::AddDirtyJSFinalizationGroup(
     JSFinalizationGroup finalization_group,
     std::function<void(HeapObject object, ObjectSlot slot, Object target)>
         gc_notify_updated_slot) {
-  DCHECK(!HasDirtyJSFinalizationGroups() ||
+  DCHECK(dirty_js_finalization_groups().IsUndefined(isolate()) ||
          dirty_js_finalization_groups().IsJSFinalizationGroup());
   DCHECK(finalization_group.next().IsUndefined(isolate()));
   DCHECK(!finalization_group.scheduled_for_cleanup());
@@ -6031,44 +6006,6 @@ void Heap::AddDirtyJSFinalizationGroup(
   set_dirty_js_finalization_groups(finalization_group);
   // Roots are rescanned after objects are moved, so no need to record a slot
   // for the root pointing to the first JSFinalizationGroup.
-}
-
-MaybeHandle<JSFinalizationGroup> Heap::TakeOneDirtyJSFinalizationGroup() {
-  if (HasDirtyJSFinalizationGroups()) {
-    Handle<JSFinalizationGroup> finalization_group(
-        JSFinalizationGroup::cast(dirty_js_finalization_groups()), isolate());
-    set_dirty_js_finalization_groups(finalization_group->next());
-    finalization_group->set_next(ReadOnlyRoots(isolate()).undefined_value());
-    return finalization_group;
-  }
-  return {};
-}
-
-void Heap::RemoveDirtyFinalizationGroupsOnContext(NativeContext context) {
-  if (!FLAG_harmony_weak_refs) return;
-  if (isolate()->host_cleanup_finalization_group_callback()) return;
-
-  DisallowHeapAllocation no_gc;
-
-  Isolate* isolate = this->isolate();
-  Object prev = ReadOnlyRoots(isolate).undefined_value();
-  Object current = dirty_js_finalization_groups();
-  while (!current.IsUndefined(isolate)) {
-    JSFinalizationGroup finalization_group = JSFinalizationGroup::cast(current);
-    if (finalization_group.native_context() == context) {
-      if (prev.IsUndefined(isolate)) {
-        set_dirty_js_finalization_groups(finalization_group.next());
-      } else {
-        JSFinalizationGroup::cast(prev).set_next(finalization_group.next());
-      }
-      finalization_group.set_scheduled_for_cleanup(false);
-      current = finalization_group.next();
-      finalization_group.set_next(ReadOnlyRoots(isolate).undefined_value());
-    } else {
-      prev = current;
-      current = finalization_group.next();
-    }
-  }
 }
 
 void Heap::KeepDuringJob(Handle<JSReceiver> target) {

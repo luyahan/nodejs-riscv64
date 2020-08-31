@@ -5064,8 +5064,7 @@ void BytecodeGenerator::VisitDelete(UnaryOperation* unary) {
     switch (variable->location()) {
       case VariableLocation::PARAMETER:
       case VariableLocation::LOCAL:
-      case VariableLocation::CONTEXT:
-      case VariableLocation::REPL_GLOBAL: {
+      case VariableLocation::CONTEXT: {
         // Deleting local var/let/const, context variables, and arguments
         // does not have any effect.
         builder()->LoadFalse();
@@ -5086,9 +5085,7 @@ void BytecodeGenerator::VisitDelete(UnaryOperation* unary) {
             .CallRuntime(Runtime::kDeleteLookupSlot, name_reg);
         break;
       }
-      case VariableLocation::MODULE:
-        // Modules are always in strict mode and unqualified identifers are not
-        // allowed in strict mode.
+      default:
         UNREACHABLE();
     }
   } else {

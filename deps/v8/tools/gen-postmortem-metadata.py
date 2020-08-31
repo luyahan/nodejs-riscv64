@@ -263,7 +263,6 @@ extras_accessors = [
     'ExternalString, resource, Object, kResourceOffset',
     'SeqOneByteString, chars, char, kHeaderSize',
     'SeqTwoByteString, chars, char, kHeaderSize',
-    'UncompiledData, inferred_name, String, kInferredNameOffset',
     'UncompiledData, start_position, int32_t, kStartPositionOffset',
     'UncompiledData, end_position, int32_t, kEndPositionOffset',
     'SharedFunctionInfo, raw_function_token_offset, int16_t, kFunctionTokenOffsetOffset',
@@ -381,11 +380,9 @@ def load_objects_from_file(objfilename, checktypes):
         objfile = io.open(objfilename, 'r', encoding='utf-8');
         in_insttype = False;
         in_torque_insttype = False
-        in_torque_fulldef = False
 
         typestr = '';
         torque_typestr = ''
-        torque_fulldefstr = ''
         uncommented_file = ''
 
         #
@@ -403,20 +400,12 @@ def load_objects_from_file(objfilename, checktypes):
                         in_torque_insttype = True
                         continue
 
-                if (line.startswith('#define TORQUE_INSTANCE_CHECKERS_SINGLE_FULLY_DEFINED')):
-                        in_torque_fulldef = True
-                        continue
-
                 if (in_insttype and line.startswith('};')):
                         in_insttype = False;
                         continue;
 
                 if (in_torque_insttype and (not line or line.isspace())):
                           in_torque_insttype = False
-                          continue
-
-                if (in_torque_fulldef and (not line or line.isspace())):
-                          in_torque_fulldef = False
                           continue
 
                 line = re.sub('//.*', '', line.strip());
@@ -427,10 +416,6 @@ def load_objects_from_file(objfilename, checktypes):
 
                 if (in_torque_insttype):
                         torque_typestr += line
-                        continue
-
-                if (in_torque_fulldef):
-                        torque_fulldefstr += line
                         continue
 
                 uncommented_file += '\n' + line
@@ -463,18 +448,7 @@ def load_objects_from_file(objfilename, checktypes):
         entries = torque_typestr.split('\\')
         for entry in entries:
                 types[re.sub(r' *V\(|\) *', '', entry)] = True
-        entries = torque_fulldefstr.split('\\')
-        for entry in entries:
-                entry = entry.strip()
-                if not entry:
-                    continue
-                idx = entry.find('(');
-                rest = entry[idx + 1: len(entry) - 1];
-                args = re.split('\s*,\s*', rest);
-                typename = args[0]
-                typeconst = args[1]
-                types[typeconst] = True
-                typeclasses[typeconst] = typename
+
         #
         # Infer class names for each type based on a systematic transformation.
         # For example, "JS_FUNCTION_TYPE" becomes "JSFunction".  We find the
@@ -577,24 +551,25 @@ def parse_field(call):
 
         consts = [];
 
-        klass = args[0];
-        field = args[1];
-        dtype = None
-        offset = None
-        if kind.startswith('WEAK_ACCESSORS'):
-                dtype = 'weak'
-                offset = args[2];
-        elif not (kind.startswith('SMI_ACCESSORS') or kind.startswith('ACCESSORS_TO_SMI')):
+        if (kind == 'ACCESSORS' or kind == 'ACCESSORS2' or
+            kind == 'ACCESSORS_GCSAFE'):
+                klass = args[0];
+                field = args[1];
                 dtype = args[2].replace('<', '_').replace('>', '_')
                 offset = args[3];
-        else:
-                offset = args[2];
-                dtype = 'SMI'
 
+                return ({
+                    'name': 'class_%s__%s__%s' % (klass, field, dtype),
+                    'value': '%s::%s' % (klass, offset)
+                });
 
-        assert(offset is not None and dtype is not None);
+        assert(kind == 'SMI_ACCESSORS' or kind == 'ACCESSORS_TO_SMI');
+        klass = args[0];
+        field = args[1];
+        offset = args[2];
+
         return ({
-            'name': 'class_%s__%s__%s' % (klass, field, dtype),
+            'name': 'class_%s__%s__%s' % (klass, field, 'SMI'),
             'value': '%s::%s' % (klass, offset)
         });
 
@@ -621,10 +596,7 @@ def load_fields_from_file(filename):
         # call parse_field() to pick apart the invocation.
         #
         prefixes = [ 'ACCESSORS', 'ACCESSORS2', 'ACCESSORS_GCSAFE',
-                     'SMI_ACCESSORS', 'ACCESSORS_TO_SMI',
-                     'SYNCHRONIZED_ACCESSORS', 'WEAK_ACCESSORS' ];
-        prefixes += ([ prefix + "_CHECKED" for prefix in prefixes ] +
-                     [ prefix + "_CHECKED2" for prefix in prefixes ])
+                     'SMI_ACCESSORS', 'ACCESSORS_TO_SMI' ];
         current = '';
         opens = 0;
 

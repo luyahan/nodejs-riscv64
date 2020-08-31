@@ -24,6 +24,10 @@
 #include "src/codegen/mips64/register-mips64.h"
 #elif V8_TARGET_ARCH_S390
 #include "src/codegen/s390/register-s390.h"
+#elif V8_TARGET_ARCH_RISCV64
+#include "src/codegen/riscv64/register-riscv64.h"
+#elif V8_TARGET_ARCH_RISCV
+#include "src/codegen/riscv/register-riscv.h"
 #else
 #error Unknown architecture.
 #endif
