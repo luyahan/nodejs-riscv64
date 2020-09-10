@@ -36,7 +36,7 @@
 
     # Reset this number to 0 on major V8 upgrades.
     # Increment by one for each non-official patch applied to deps/v8.
-    'v8_embedder_string': '-node.12',
+    'v8_embedder_string': '-node.16',
 
     ##### V8 defaults for Node.js #####
 
@@ -53,6 +53,9 @@
 
     # Enable disassembler for `--print-code` v8 options
     'v8_enable_disassembler': 1,
+
+    # Sets -dOBJECT_PRINT.
+    'v8_enable_object_print%': 1,
 
     # https://github.com/nodejs/node/pull/22920/files#r222779926
     'v8_enable_handle_zapping': 0,
@@ -487,6 +490,14 @@
           }],
           ['target_arch=="x64"', {
             'xcode_settings': {'ARCHS': ['x86_64']},
+          }],
+          ['target_arch=="arm64"', {
+            'xcode_settings': {
+              'ARCHS': ['arm64'],
+              'OTHER_LDFLAGS!': [
+                '-Wl,-no_pie',
+              ],
+            },
           }],
           ['clang==1', {
             'xcode_settings': {

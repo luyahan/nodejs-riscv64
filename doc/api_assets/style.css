@@ -64,7 +64,6 @@ a.type {
   position: relative;
 }
 
-a,
 a:link,
 a:active {
   color: #43853d;
@@ -145,7 +144,7 @@ ol.version-picker {
   list-style: none;
   position: absolute;
   right: 0;
-  top: 1.25rem;
+  top: 100%;
   width: 100%;
 }
 
@@ -204,11 +203,11 @@ ol.version-picker li:last-child a {
 }
 
 .api_stability_1 {
-  background-color: #ec5315;
+  background-color: #ca5010;
 }
 
 .api_stability_2 {
-  background-color: #4eba0f;
+  background-color: #5a8147;
 }
 
 .api_metadata {
@@ -524,7 +523,7 @@ a code {
 
 #column2 .line {
   margin: 0 .5rem;
-  background-color: #707070;
+  border-color: #707070;
 }
 
 #column2 ul li:last-child {
@@ -611,7 +610,6 @@ td > *:last-child {
   }
   .apidoc #column2 > ul > li > a[href] {
     padding: .5rem 1.4375rem;
-    padding-right: 0;
     display: block;
   }
   .apidoc #column2 > ul > :first-child > a[href] {

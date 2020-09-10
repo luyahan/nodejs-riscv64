@@ -76,6 +76,21 @@ $ node --completion-bash > node_bash_completion
 $ source node_bash_completion
 ```
 
+### `--conditions=condition`
+<!-- YAML
+added: v14.9.0
+-->
+
+> Stability: 1 - Experimental
+
+Enable experimental support for custom conditional exports resolution
+conditions.
+
+Any number of custom string condition names are permitted.
+
+The default Node.js conditions of `"node"`, `"default"`, `"import"`, and
+`"require"` will always apply as defined.
+
 ### `--cpu-prof`
 <!-- YAML
 added: v12.0.0
@@ -843,14 +858,14 @@ Print short summaries of calls to [`Atomics.wait()`][] to stderr.
 The output could look like this:
 
 ```text
-(node:15701) [Thread 0] Atomics.wait(<address> + 0, 1, inf) started
-(node:15701) [Thread 0] Atomics.wait(<address> + 0, 1, inf) did not wait because the values mismatched
-(node:15701) [Thread 0] Atomics.wait(<address> + 0, 0, 10) started
-(node:15701) [Thread 0] Atomics.wait(<address> + 0, 0, 10) timed out
-(node:15701) [Thread 0] Atomics.wait(<address> + 4, 0, inf) started
-(node:15701) [Thread 1] Atomics.wait(<address> + 4, -1, inf) started
-(node:15701) [Thread 0] Atomics.wait(<address> + 4, 0, inf) was woken up by another thread
-(node:15701) [Thread 1] Atomics.wait(<address> + 4, -1, inf) was woken up by another thread
+(node:15701) [Thread 0] Atomics.wait(&lt;address> + 0, 1, inf) started
+(node:15701) [Thread 0] Atomics.wait(&lt;address> + 0, 1, inf) did not wait because the values mismatched
+(node:15701) [Thread 0] Atomics.wait(&lt;address> + 0, 0, 10) started
+(node:15701) [Thread 0] Atomics.wait(&lt;address> + 0, 0, 10) timed out
+(node:15701) [Thread 0] Atomics.wait(&lt;address> + 4, 0, inf) started
+(node:15701) [Thread 1] Atomics.wait(&lt;address> + 4, -1, inf) started
+(node:15701) [Thread 0] Atomics.wait(&lt;address> + 4, 0, inf) was woken up by another thread
+(node:15701) [Thread 1] Atomics.wait(&lt;address> + 4, -1, inf) was woken up by another thread
 ```
 
 The fields here correspond to:
@@ -1199,6 +1214,7 @@ node --require "./a.js" --require "./b.js"
 
 Node.js options that are allowed are:
 <!-- node-options-node start -->
+* `--conditions`
 * `--diagnostic-dir`
 * `--disable-proto`
 * `--enable-fips`
@@ -1542,7 +1558,7 @@ $ node --max-old-space-size=1536 index.js
 [`tls.DEFAULT_MAX_VERSION`]: tls.html#tls_tls_default_max_version
 [`tls.DEFAULT_MIN_VERSION`]: tls.html#tls_tls_default_min_version
 [`unhandledRejection`]: process.html#process_event_unhandledrejection
-[`worker_threads.threadId`]: worker_threads.html##worker_threads_worker_threadid
+[`worker_threads.threadId`]: worker_threads.html#worker_threads_worker_threadid
 [Chrome DevTools Protocol]: https://chromedevtools.github.io/devtools-protocol/
 [REPL]: repl.html
 [ScriptCoverage]: https://chromedevtools.github.io/devtools-protocol/tot/Profiler#type-ScriptCoverage

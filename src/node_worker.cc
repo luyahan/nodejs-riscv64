@@ -135,6 +135,7 @@ class WorkerThreadData {
       return;
     }
     loop_init_failed_ = false;
+    uv_loop_configure(&loop_, UV_METRICS_IDLE_TIME);
 
     std::shared_ptr<ArrayBufferAllocator> allocator =
         ArrayBufferAllocator::Create();
@@ -501,7 +502,7 @@ void Worker::New(const FunctionCallbackInfo<Value>& args) {
                             per_isolate_opts.get(),
                             kAllowedInEnvironment,
                             &errors);
-      if (errors.size() > 0 && args[1]->IsObject()) {
+      if (!errors.empty() && args[1]->IsObject()) {
         // Only fail for explicitly provided env, this protects from failures
         // when NODE_OPTIONS from parent's env is used (which is the default).
         Local<Value> error;

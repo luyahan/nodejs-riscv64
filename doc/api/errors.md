@@ -1969,7 +1969,7 @@ An attempt was made to issue Server Name Indication from a TLS server-side
 socket, which is only valid from a client.
 
 <a id="ERR_TLS_PSK_SET_IDENTIY_HINT_FAILED"></a>
-### ERR_TLS_PSK_SET_IDENTIY_HINT_FAILED
+### `ERR_TLS_PSK_SET_IDENTIY_HINT_FAILED`
 
 Failed to set PSK identity hint. Hint may be too long.
 
@@ -2082,11 +2082,6 @@ import 'package-name'; // supported
 ### `ERR_UNSUPPORTED_ESM_URL_SCHEME`
 
 `import` with URL schemes other than `file` and `data` is unsupported.
-
-<a id="ERR_V8BREAKITERATOR"></a>
-### `ERR_V8BREAKITERATOR`
-
-The V8 `BreakIterator` API was used but the full ICU data set is not installed.
 
 <a id="ERR_VALID_PERFORMANCE_ENTRY_TYPE"></a>
 ### `ERR_VALID_PERFORMANCE_ENTRY_TYPE`
@@ -2214,6 +2209,17 @@ Too much HTTP header data was received. In order to protect against malicious or
 malconfigured clients, if more than 8KB of HTTP header data is received then
 HTTP parsing will abort without a request or response object being created, and
 an `Error` with this code will be emitted.
+
+<a id="HPE_UNEXPECTED_CONTENT_LENGTH"></a>
+### `HPE_UNEXPECTED_CONTENT_LENGTH`
+
+Server is sending both a `Content-Length` header and `Transfer-Encoding: chunked`.
+
+`Transfer-Encoding: chunked` allows the server to maintain an HTTP persistent
+connection for dynamically generated content.
+In this case, the `Content-Length` HTTP header cannot be used.
+
+Use `Content-Length` or `Transfer-Encoding: chunked`.
 
 <a id="MODULE_NOT_FOUND"></a>
 ### `MODULE_NOT_FOUND`
@@ -2435,18 +2441,6 @@ cannot be serialized.
 This can only happen when native addons create `SharedArrayBuffer`s in
 "externalized" mode, or put existing `SharedArrayBuffer` into externalized mode.
 
-<a id="ERR_UNKNOWN_BUILTIN_MODULE"></a>
-### `ERR_UNKNOWN_BUILTIN_MODULE`
-<!-- YAML
-added: v8.0.0
-removed: v9.0.0
--->
-
-The `'ERR_UNKNOWN_BUILTIN_MODULE'` error code is used to identify a specific
-kind of internal Node.js error that should not typically be triggered by user
-code. Instances of this error point to an internal bug within the Node.js
-binary itself.
-
 <a id="ERR_UNKNOWN_STDIN_TYPE"></a>
 ### `ERR_UNKNOWN_STDIN_TYPE`
 <!-- YAML
@@ -2468,6 +2462,11 @@ removed: v11.7.0
 An attempt was made to launch a Node.js process with an unknown `stdout` or
 `stderr` file type. This error is usually an indication of a bug within Node.js
 itself, although it is possible for user code to trigger it.
+
+<a id="ERR_V8BREAKITERATOR"></a>
+### `ERR_V8BREAKITERATOR`
+
+The V8 `BreakIterator` API was used but the full ICU data set is not installed.
 
 <a id="ERR_VALUE_OUT_OF_RANGE"></a>
 ### `ERR_VALUE_OUT_OF_RANGE`

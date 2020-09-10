@@ -107,14 +107,14 @@ string into a `Buffer` as decoding.
   tabs, and new lines contained within the base64-encoded string are ignored.
 
 * `'hex'`: Encode each byte as two hexadecimal characters. Data truncation
-  may occur when decoding string that do exclusively contain valid hexadecimal
+  may occur when decoding strings that do exclusively contain valid hexadecimal
   characters. See below for an example.
 
 The following legacy character encodings are also supported:
 
 * `'ascii'`: For 7-bit [ASCII][] data only. When encoding a string into a
   `Buffer`, this is equivalent to using `'latin1'`. When decoding a `Buffer`
-  into a string, using encoding this will additionally unset the highest bit of
+  into a string, using this encoding will additionally unset the highest bit of
   each byte before decoding as `'latin1'`.
   Generally, there should be no reason to use this encoding, as `'utf8'`
   (or, if the data is known to always be ASCII-only, `'latin1'`) will be a
@@ -176,7 +176,7 @@ In particular:
 There are two ways to create new [`TypedArray`][] instances from a `Buffer`:
 
 * Passing a `Buffer` to a [`TypedArray`][] constructor will copy the `Buffer`s
-  contents, interpreted an array array of integers, and not as a byte sequence
+  contents, interpreted as an array of integers, and not as a byte sequence
   of the target type.
 
 ```js
@@ -1379,6 +1379,10 @@ values.
 added:
  - v12.0.0
  - v10.20.0
+changes:
+  - version: v14.10.0
+    pr-url: https://github.com/nodejs/node/pull/34960
+    description: This function is also available as `buf.readBigUint64BE()`.
 -->
 
 * `offset` {integer} Number of bytes to skip before starting to read. Must
@@ -1400,6 +1404,10 @@ console.log(buf.readBigUInt64BE(0));
 added:
  - v12.0.0
  - v10.20.0
+changes:
+  - version: v14.10.0
+    pr-url: https://github.com/nodejs/node/pull/34960
+    description: This function is also available as `buf.readBigUint64LE()`.
 -->
 
 * `offset` {integer} Number of bytes to skip before starting to read. Must
@@ -1709,6 +1717,9 @@ console.log(buf.readIntLE(0, 6).toString(16));
 <!-- YAML
 added: v0.5.0
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.readUint8()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -1736,6 +1747,9 @@ console.log(buf.readUInt8(2));
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.readUint16BE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -1762,6 +1776,9 @@ console.log(buf.readUInt16BE(1).toString(16));
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.readUint16LE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -1790,6 +1807,9 @@ console.log(buf.readUInt16LE(2).toString(16));
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.readUint32BE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -1814,6 +1834,9 @@ console.log(buf.readUInt32BE(0).toString(16));
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.readUint32LE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -1840,6 +1863,9 @@ console.log(buf.readUInt32LE(1).toString(16));
 <!-- YAML
 added: v0.11.15
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.readUintBE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -1869,6 +1895,9 @@ console.log(buf.readUIntBE(1, 6).toString(16));
 <!-- YAML
 added: v0.11.15
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.readUintLE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -2283,6 +2312,10 @@ console.log(buf);
 added:
  - v12.0.0
  - v10.20.0
+changes:
+  - version: v14.10.0
+    pr-url: https://github.com/nodejs/node/pull/34960
+    description: This function is also available as `buf.writeBigUint64BE()`.
 -->
 
 * `value` {bigint} Number to be written to `buf`.
@@ -2306,6 +2339,10 @@ console.log(buf);
 added:
  - v12.0.0
  - v10.20.0
+changes:
+  - version: v14.10.0
+    pr-url: https://github.com/nodejs/node/pull/34960
+    description: This function is also available as `buf.writeBigUint64LE()`.
 -->
 
 * `value` {bigint} Number to be written to `buf`.
@@ -2651,6 +2688,9 @@ console.log(buf);
 <!-- YAML
 added: v0.5.0
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.writeUint8()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -2682,6 +2722,9 @@ console.log(buf);
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.writeUint16BE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -2711,6 +2754,9 @@ console.log(buf);
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.writeUint16LE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -2740,6 +2786,9 @@ console.log(buf);
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.writeUint32BE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -2768,6 +2817,9 @@ console.log(buf);
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.writeUint32LE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -2796,6 +2848,9 @@ console.log(buf);
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.writeUintBE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -2826,6 +2881,9 @@ console.log(buf);
 <!-- YAML
 added: v0.5.5
 changes:
+  - version: v14.9.0
+    pr-url: https://github.com/nodejs/node/pull/34729
+    description: This function is also available as `buf.writeUintLE()`.
   - version: v10.0.0
     pr-url: https://github.com/nodejs/node/pull/18395
     description: Removed `noAssert` and no implicit coercion of the offset
@@ -3079,8 +3137,8 @@ added: v8.2.0
 
 * {integer} The largest size allowed for a single `Buffer` instance.
 
-On 32-bit architectures, this value currently is `(2^30)-1` (~1GB).
-On 64-bit architectures, this value currently is `(2^31)-1` (~2GB).
+On 32-bit architectures, this value currently is 2<sup>30</sup> - 1 (~1GB).
+On 64-bit architectures, this value currently is 2<sup>31</sup> - 1 (~2GB).
 
 This value is also available as [`buffer.kMaxLength`][].
 
