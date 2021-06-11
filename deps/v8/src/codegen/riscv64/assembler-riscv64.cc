@@ -1247,7 +1247,7 @@ void Assembler::label_at_put(Label* L, int at_offset) {
       DCHECK_EQ(imm18 & 3, 0);
       int32_t imm16 = imm18 >> 2;
       DCHECK(is_int16(imm16));
-      instr_at_put(at_offset, (imm16 & kImm16Mask));
+      instr_at_put(at_offset, (int32_t)(imm16 & kImm16Mask));
     } else {
       target_pos = kEndOfJumpChain;
       instr_at_put(at_offset, target_pos);
@@ -2630,7 +2630,7 @@ void Assembler::GrowBuffer() {
                                reloc_info_writer.last_pc() + pc_delta);
 
   // Relocate runtime entries.
-  Vector<byte> instructions{buffer_start_, pc_offset()};
+  Vector<byte> instructions{buffer_start_, static_cast<size_t>(pc_offset())};
   Vector<const byte> reloc_info{reloc_info_writer.pos(), reloc_size};
   for (RelocIterator it(instructions, reloc_info, 0); !it.done(); it.next()) {
     RelocInfo::Mode rmode = it.rinfo()->rmode();

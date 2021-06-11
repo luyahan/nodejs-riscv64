@@ -508,6 +508,11 @@ void AdjustStackPointerForTailCall(TurboAssembler* tasm,
 
 }  // namespace
 
+void CodeGenerator::AssembleArchSelect(Instruction* instr,
+                                       FlagsCondition condition) {
+  UNIMPLEMENTED();
+}
+
 void CodeGenerator::AssembleTailCallBeforeGap(Instruction* instr,
                                               int first_unused_slot_offset) {
   AdjustStackPointerForTailCall(tasm(), frame_access_state(),
@@ -2578,7 +2583,7 @@ void CodeGenerator::AssembleMove(InstructionOperand* source,
         }
         case Constant::kCompressedHeapObject:
           UNREACHABLE();
-        case Constant::kRpoNumber:
+      case Constant::kRpoNumber:
           UNREACHABLE();  // TODO(titzer): loading RPO numbers
           break;
       }
