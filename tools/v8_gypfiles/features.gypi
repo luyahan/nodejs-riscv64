@@ -443,6 +443,12 @@
       ['v8_enable_webassembly==1', {
         'defines': ['V8_ENABLE_WEBASSEMBLY',],
       }],
+      ['v8_enable_trace_unoptimized==1', {
+        'defines': ['V8_TRACE_UNOPTIMIZED',],
+      }],
+      ['v8_code_comments==1', {
+        'defines': ['V8_CODE_COMMENTS',],
+      }],
       ['v8_dict_property_const_tracking==1', {
         'defines': ['V8_DICT_PROPERTY_CONST_TRACKING',],
       }],

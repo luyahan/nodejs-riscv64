@@ -11,6 +11,7 @@ def DoMain(args):
     gn_content = gn_file.read().decode('utf-8')
 
   scraper_re = re.compile(pattern + r'\[([^\]]+)', re.DOTALL)
+  print(pattern)
   matches = scraper_re.search(gn_content)
   match = matches.group(1)
   files = []
