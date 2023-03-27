@@ -1063,8 +1063,6 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   inline void Sxtw(const Register& rd, const Register& rn);
   inline void Ubfiz(const Register& rd, const Register& rn, unsigned lsb,
                     unsigned width);
-  inline void Sbfiz(const Register& rd, const Register& rn, unsigned lsb,
-                    unsigned width);
   inline void Ubfx(const Register& rd, const Register& rn, unsigned lsb,
                    unsigned width);
   inline void Lsr(const Register& rd, const Register& rn, unsigned shift);
@@ -1626,6 +1624,8 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
     mvni(vd, imm8, shift, shift_amount);
   }
   inline void Rev(const Register& rd, const Register& rn);
+  inline void Sbfiz(const Register& rd, const Register& rn, unsigned lsb,
+                    unsigned width);
   inline void Smaddl(const Register& rd, const Register& rn, const Register& rm,
                      const Register& ra);
   inline void Smsubl(const Register& rd, const Register& rn, const Register& rm,
@@ -1839,10 +1839,10 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   void ReplaceClosureCodeWithOptimizedCode(Register optimized_code,
                                            Register closure);
   void GenerateTailCallToReturnedCode(Runtime::FunctionId function_id);
-  void LoadFeedbackVectorFlagsAndJumpIfNeedsProcessing(
-      Register flags, Register feedback_vector, CodeKind current_code_kind,
-      Label* flags_need_processing);
-  void MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(Register flags,
+  void LoadTieringStateAndJumpIfNeedsProcessing(
+      Register optimization_state, Register feedback_vector,
+      CodeKind current_code_kind, Label* has_optimized_code_or_state);
+  void MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(Register optimization_state,
                                                     Register feedback_vector);
 
   // Helpers ------------------------------------------------------------------
@@ -2063,14 +2063,14 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
 
   void IncrementCounter(StatsCounter* counter, int value, Register scratch1,
                         Register scratch2) {
-    if (!v8_flags.native_code_counters) return;
+    if (!FLAG_native_code_counters) return;
     EmitIncrementCounter(counter, value, scratch1, scratch2);
   }
   void EmitIncrementCounter(StatsCounter* counter, int value, Register scratch1,
                             Register scratch2);
   void DecrementCounter(StatsCounter* counter, int value, Register scratch1,
                         Register scratch2) {
-    if (!v8_flags.native_code_counters) return;
+    if (!FLAG_native_code_counters) return;
     EmitIncrementCounter(counter, -value, scratch1, scratch2);
   }
 

@@ -695,7 +695,8 @@ TEST_F(IdentityMapTest, ExplicitGC) {
   }
 
   // Do an explicit, real GC.
-  CollectGarbage(i::NEW_SPACE);
+  isolate()->heap()->CollectGarbage(i::NEW_SPACE,
+                                    i::GarbageCollectionReason::kTesting);
 
   // Check that searching for the numbers finds the same values.
   for (size_t i = 0; i < arraysize(num_keys); i++) {
@@ -815,7 +816,8 @@ TEST_F(IdentityMapTest, GCShortCutting) {
 
     // Do an explicit, real GC, this should short-cut the thin string to point
     // to the internalized string (this is not implemented for MinorMC).
-    CollectGarbage(i::NEW_SPACE);
+    isolate()->heap()->CollectGarbage(i::NEW_SPACE,
+                                      i::GarbageCollectionReason::kTesting);
     DCHECK_IMPLIES(!FLAG_minor_mc && !FLAG_optimize_for_size,
                    *thin_string == *internalized_string);
 

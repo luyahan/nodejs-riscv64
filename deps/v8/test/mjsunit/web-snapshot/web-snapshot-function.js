@@ -86,11 +86,10 @@ d8.file.execute('test/mjsunit/web-snapshot/web-snapshot-helpers.js');
   function createObjects() {
     globalThis.F = function() {}
   }
-  const realm = Realm.create();
-  const { F } = takeAndUseWebSnapshot(createObjects, ['F'], realm);
+  const { F } = takeAndUseWebSnapshot(createObjects, ['F']);
   const o = new F();
-  assertSame(Realm.eval(realm, 'Object.prototype'),
-             Object.getPrototypeOf(Object.getPrototypeOf(o)));
+  assertEquals(Object.prototype,
+               Object.getPrototypeOf(Object.getPrototypeOf(o)));
 })();
 
 (function TestFunctionInheritance() {
@@ -152,14 +151,14 @@ d8.file.execute('test/mjsunit/web-snapshot/web-snapshot-helpers.js');
 (function TestFunctionWithProperties() {
   function createObjects() {
     function bar() { return 'bar'; };
-    bar.key1 = 'value1';
+    bar.key1 = "value1";
     bar.key2 = 1;
     bar.key3 = 2.2;
     bar.key4 = function key4() {
-      return 'key4';
+      return "key4";
     }
     bar.key5 = [1, 2];
-    bar.key6 = {'key':'value'}
+    bar.key6 = {"key":"value"}
     globalThis.foo = {
       bar: bar,
     };
@@ -171,20 +170,20 @@ d8.file.execute('test/mjsunit/web-snapshot/web-snapshot-helpers.js');
   assertEquals(2.2, foo.bar.key3);
   assertEquals('key4', foo.bar.key4());
   assertEquals([1, 2], foo.bar.key5);
-  assertEquals({ 'key': 'value' }, foo.bar.key6 );
+  assertEquals({ "key": "value" }, foo.bar.key6 );
 })();
 
 (function TestAsyncFunctionWithProperties() {
   function createObjects() {
     async function bar() { return 'bar'; };
-    bar.key1 = 'value1';
+    bar.key1 = "value1";
     bar.key2 = 1;
     bar.key3 = 2.2;
     bar.key4 = function key4() {
-      return 'key4';
+      return "key4";
     }
     bar.key5 = [1, 2];
-    bar.key6 = {'key':'value'}
+    bar.key6 = {"key":"value"}
     globalThis.foo = {
       bar: bar,
     };
@@ -195,20 +194,20 @@ d8.file.execute('test/mjsunit/web-snapshot/web-snapshot-helpers.js');
   assertEquals(2.2, foo.bar.key3);
   assertEquals('key4', foo.bar.key4());
   assertEquals([1, 2], foo.bar.key5);
-  assertEquals({'key': 'value'}, foo.bar.key6 );
+  assertEquals({ "key": "value" }, foo.bar.key6 );
 })();
 
 (function TestGeneratorFunctionWithProperties() {
   function createObjects() {
     function *bar() { return 'bar'; };
-    bar.key1 = 'value1';
+    bar.key1 = "value1";
     bar.key2 = 1;
     bar.key3 = 2.2;
     bar.key4 = function key4() {
-      return 'key4';
-    };
+      return "key4";
+    }
     bar.key5 = [1, 2];
-    bar.key6 = {'key':'value'};
+    bar.key6 = {"key":"value"}
     globalThis.foo = {
       bar: bar,
     };
@@ -219,20 +218,20 @@ d8.file.execute('test/mjsunit/web-snapshot/web-snapshot-helpers.js');
   assertEquals(2.2, foo.bar.key3);
   assertEquals('key4', foo.bar.key4());
   assertEquals([1, 2], foo.bar.key5);
-  assertEquals({'key': 'value'}, foo.bar.key6 );
+  assertEquals({ "key": "value" }, foo.bar.key6 );
 })();
 
 (function TestAsyncGeneratorFunctionWithProperties() {
   function createObjects() {
     async function *bar() { return 'bar'; };
-    bar.key1 = 'value1';
+    bar.key1 = "value1";
     bar.key2 = 1;
     bar.key3 = 2.2;
     bar.key4 = function key4() {
-      return 'key4';
+      return "key4";
     }
     bar.key5 = [1, 2];
-    bar.key6 = {'key':'value'}
+    bar.key6 = {"key":"value"}
     globalThis.foo = {
       bar: bar,
     };
@@ -243,18 +242,18 @@ d8.file.execute('test/mjsunit/web-snapshot/web-snapshot-helpers.js');
   assertEquals(2.2, foo.bar.key3);
   assertEquals('key4', foo.bar.key4());
   assertEquals([1, 2], foo.bar.key5);
-  assertEquals({'key': 'value'}, foo.bar.key6);
+  assertEquals({ "key": "value" }, foo.bar.key6 );
 })();
 
 (function TestFunctionsWithSameMap() {
   function createObjects() {
     function bar1() { return 'bar1'; };
-    bar1.key = 'value';
+    bar1.key = "value";
 
     function bar2() {
-      return 'bar2';
+      return "bar2";
     }
-    bar2.key = 'value';
+    bar2.key = "value";
 
     globalThis.foo = {
       bar1: bar1,

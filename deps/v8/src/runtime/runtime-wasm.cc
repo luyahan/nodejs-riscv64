@@ -117,10 +117,7 @@ Object ThrowWasmError(Isolate* isolate, MessageTemplate message,
 }
 }  // namespace
 
-// Takes a JS object and a wasm type as Smi. Type checks the object against the
-// type; if the check succeeds, returns the object in its wasm representation;
-// otherwise throws a type error.
-RUNTIME_FUNCTION(Runtime_WasmJSToWasmObject) {
+RUNTIME_FUNCTION(Runtime_WasmIsValidRefValue) {
   // This code is called from wrappers, so the "thread is wasm" flag is not set.
   DCHECK_IMPLIES(trap_handler::IsTrapHandlerEnabled(),
                  !trap_handler::IsThreadInWasm());
@@ -141,13 +138,9 @@ RUNTIME_FUNCTION(Runtime_WasmJSToWasmObject) {
   wasm::ValueType type = wasm::ValueType::FromRawBitField(raw_type);
   const char* error_message;
 
-  Handle<Object> result;
-  bool success = internal::wasm::JSToWasmObject(isolate, module, value, type,
-                                                &error_message)
-                     .ToHandle(&result);
-  if (success) return *result;
-  THROW_NEW_ERROR_RETURN_FAILURE(
-      isolate, NewTypeError(MessageTemplate::kWasmTrapJSTypeError));
+  bool result = internal::wasm::TypecheckJSObject(isolate, module, value, type,
+                                                  &error_message);
+  return Smi::FromInt(result);
 }
 
 RUNTIME_FUNCTION(Runtime_WasmMemoryGrow) {
@@ -192,15 +185,6 @@ RUNTIME_FUNCTION(Runtime_WasmThrowJSTypeError) {
   DCHECK_EQ(0, args.length());
   THROW_NEW_ERROR_RETURN_FAILURE(
       isolate, NewTypeError(MessageTemplate::kWasmTrapJSTypeError));
-}
-
-// This error is thrown from a wasm-to-JS wrapper, so unlike
-// Runtime_ThrowWasmError, this function does not check or unset the
-// thread-in-wasm flag.
-RUNTIME_FUNCTION(Runtime_ThrowBadSuspenderError) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(0, args.length());
-  return ThrowWasmError(isolate, MessageTemplate::kWasmTrapBadSuspender);
 }
 
 RUNTIME_FUNCTION(Runtime_WasmThrow) {
@@ -467,7 +451,8 @@ RUNTIME_FUNCTION(Runtime_WasmFunctionTableGet) {
     return ThrowWasmError(isolate, MessageTemplate::kWasmTrapTableOutOfBounds);
   }
 
-  return *WasmTableObject::Get(isolate, table, entry_index);
+  return *WasmTableObject::Get(isolate, table, entry_index,
+                               WasmTableObject::kWasm);
 }
 
 RUNTIME_FUNCTION(Runtime_WasmFunctionTableSet) {
@@ -491,7 +476,8 @@ RUNTIME_FUNCTION(Runtime_WasmFunctionTableSet) {
   if (!WasmTableObject::IsInBounds(isolate, table, entry_index)) {
     return ThrowWasmError(isolate, MessageTemplate::kWasmTrapTableOutOfBounds);
   }
-  WasmTableObject::Set(isolate, table, entry_index, element);
+  WasmTableObject::Set(isolate, table, entry_index, element,
+                       WasmTableObject::kWasm);
   return ReadOnlyRoots(isolate).undefined_value();
 }
 
@@ -555,7 +541,8 @@ RUNTIME_FUNCTION(Runtime_WasmTableGrow) {
 
   Handle<WasmTableObject> table(
       WasmTableObject::cast(instance.tables().get(table_index)), isolate);
-  int result = WasmTableObject::Grow(isolate, table, delta, value);
+  int result = WasmTableObject::Grow(isolate, table, delta, value,
+                                     WasmTableObject::kWasm);
 
   return Smi::FromInt(result);
 }
@@ -818,7 +805,7 @@ RUNTIME_FUNCTION(Runtime_WasmAllocateSuspender) {
                            isolate->root(RootIndex::kActiveContinuation)),
                        isolate);
   Handle<WasmContinuationObject> target =
-      WasmContinuationObject::New(isolate, wasm::JumpBuffer::Inactive, parent);
+      WasmContinuationObject::New(isolate, parent);
   auto target_stack =
       Managed<wasm::StackMemory>::cast(target->stack()).get().get();
   isolate->wasm_stacks()->Add(target_stack);
@@ -833,11 +820,6 @@ RUNTIME_FUNCTION(Runtime_WasmAllocateSuspender) {
   active_suspender_slot.store(*suspender);
 
   SyncStackLimit(isolate);
-  wasm::JumpBuffer* jmpbuf = reinterpret_cast<wasm::JumpBuffer*>(
-      parent->ReadExternalPointerField<kWasmContinuationJmpbufTag>(
-          WasmContinuationObject::kJmpbufOffset, isolate));
-  DCHECK_EQ(jmpbuf->state, wasm::JumpBuffer::Active);
-  jmpbuf->state = wasm::JumpBuffer::Inactive;
   return *suspender;
 }
 
@@ -868,6 +850,20 @@ RUNTIME_FUNCTION(Runtime_WasmCreateResumePromise) {
   return *result;
 }
 
+namespace {
+unibrow::Utf8Variant Utf8VariantFromWtf8Policy(
+    wasm::StringRefWtf8Policy policy) {
+  switch (policy) {
+    case wasm::kWtf8PolicyReject:
+      return unibrow::Utf8Variant::kUtf8;
+    case wasm::kWtf8PolicyAccept:
+      return unibrow::Utf8Variant::kWtf8;
+    case wasm::kWtf8PolicyReplace:
+      return unibrow::Utf8Variant::kLossyUtf8;
+  }
+}
+}  // namespace
+
 // Returns the new string if the operation succeeds.  Otherwise throws an
 // exception and returns an empty result.
 RUNTIME_FUNCTION(Runtime_WasmStringNewWtf8) {
@@ -876,16 +872,16 @@ RUNTIME_FUNCTION(Runtime_WasmStringNewWtf8) {
   HandleScope scope(isolate);
   WasmInstanceObject instance = WasmInstanceObject::cast(args[0]);
   uint32_t memory = args.positive_smi_value_at(1);
-  uint32_t utf8_variant_value = args.positive_smi_value_at(2);
+  uint32_t policy_value = args.positive_smi_value_at(2);
   uint32_t offset = NumberToUint32(args[3]);
   uint32_t size = NumberToUint32(args[4]);
 
   DCHECK_EQ(memory, 0);
   USE(memory);
-  DCHECK(utf8_variant_value <=
-         static_cast<uint32_t>(unibrow::Utf8Variant::kLastUtf8Variant));
+  DCHECK(policy_value <= wasm::kLastWtf8Policy);
 
-  auto utf8_variant = static_cast<unibrow::Utf8Variant>(utf8_variant_value);
+  auto policy = static_cast<wasm::StringRefWtf8Policy>(policy_value);
+  auto utf8_variant = Utf8VariantFromWtf8Policy(policy);
 
   uint64_t mem_size = instance.memory_size();
   if (!base::IsInBounds<uint64_t>(offset, size, mem_size)) {
@@ -902,14 +898,14 @@ RUNTIME_FUNCTION(Runtime_WasmStringNewWtf8Array) {
   ClearThreadInWasmScope flag_scope(isolate);
   DCHECK_EQ(4, args.length());
   HandleScope scope(isolate);
-  uint32_t utf8_variant_value = args.positive_smi_value_at(0);
+  uint32_t policy_value = args.positive_smi_value_at(0);
   Handle<WasmArray> array(WasmArray::cast(args[1]), isolate);
   uint32_t start = NumberToUint32(args[2]);
   uint32_t end = NumberToUint32(args[3]);
 
-  DCHECK(utf8_variant_value <=
-         static_cast<uint32_t>(unibrow::Utf8Variant::kLastUtf8Variant));
-  auto utf8_variant = static_cast<unibrow::Utf8Variant>(utf8_variant_value);
+  DCHECK(policy_value <= wasm::kLastWtf8Policy);
+  auto policy = static_cast<wasm::StringRefWtf8Policy>(policy_value);
+  auto utf8_variant = Utf8VariantFromWtf8Policy(policy);
 
   RETURN_RESULT_OR_FAILURE(isolate, isolate->factory()->NewStringFromUtf8(
                                         array, start, end, utf8_variant));
@@ -1023,7 +1019,7 @@ bool HasUnpairedSurrogate(base::Vector<const base::uc16> wtf16) {
 // TODO(12868): Consider unifying with api.cc:String::WriteUtf8.
 template <typename T>
 int EncodeWtf8(base::Vector<char> bytes, size_t offset,
-               base::Vector<const T> wtf16, unibrow::Utf8Variant variant,
+               base::Vector<const T> wtf16, wasm::StringRefWtf8Policy policy,
                MessageTemplate* message, MessageTemplate out_of_bounds) {
   // The first check is a quick estimate to decide whether the second check
   // is worth the computation.
@@ -1034,16 +1030,16 @@ int EncodeWtf8(base::Vector<char> bytes, size_t offset,
   }
 
   bool replace_invalid = false;
-  switch (variant) {
-    case unibrow::Utf8Variant::kWtf8:
+  switch (policy) {
+    case wasm::kWtf8PolicyAccept:
       break;
-    case unibrow::Utf8Variant::kUtf8:
+    case wasm::kWtf8PolicyReject:
       if (HasUnpairedSurrogate(wtf16)) {
         *message = MessageTemplate::kWasmTrapStringIsolatedSurrogate;
         return -1;
       }
       break;
-    case unibrow::Utf8Variant::kLossyUtf8:
+    case wasm::kWtf8PolicyReplace:
       replace_invalid = true;
       break;
     default:
@@ -1061,7 +1057,7 @@ int EncodeWtf8(base::Vector<char> bytes, size_t offset,
   return static_cast<int>(dst - dst_start);
 }
 template <typename GetWritableBytes>
-Object EncodeWtf8(Isolate* isolate, unibrow::Utf8Variant variant,
+Object EncodeWtf8(Isolate* isolate, wasm::StringRefWtf8Policy policy,
                   Handle<String> string, GetWritableBytes get_writable_bytes,
                   size_t offset, MessageTemplate out_of_bounds_message) {
   string = String::Flatten(isolate, string);
@@ -1072,9 +1068,9 @@ Object EncodeWtf8(Isolate* isolate, unibrow::Utf8Variant variant,
     String::FlatContent content = string->GetFlatContent(no_gc);
     base::Vector<char> dst = get_writable_bytes(no_gc);
     written = content.IsOneByte()
-                  ? EncodeWtf8(dst, offset, content.ToOneByteVector(), variant,
+                  ? EncodeWtf8(dst, offset, content.ToOneByteVector(), policy,
                                &message, out_of_bounds_message)
-                  : EncodeWtf8(dst, offset, content.ToUC16Vector(), variant,
+                  : EncodeWtf8(dst, offset, content.ToUC16Vector(), policy,
                                &message, out_of_bounds_message);
   }
   if (written < 0) {
@@ -1128,22 +1124,21 @@ RUNTIME_FUNCTION(Runtime_WasmStringEncodeWtf8) {
   HandleScope scope(isolate);
   WasmInstanceObject instance = WasmInstanceObject::cast(args[0]);
   uint32_t memory = args.positive_smi_value_at(1);
-  uint32_t utf8_variant_value = args.positive_smi_value_at(2);
+  uint32_t policy_value = args.positive_smi_value_at(2);
   Handle<String> string(String::cast(args[3]), isolate);
   uint32_t offset = NumberToUint32(args[4]);
 
   DCHECK_EQ(memory, 0);
   USE(memory);
-  DCHECK(utf8_variant_value <=
-         static_cast<uint32_t>(unibrow::Utf8Variant::kLastUtf8Variant));
+  DCHECK(policy_value <= wasm::kLastWtf8Policy);
 
   char* memory_start = reinterpret_cast<char*>(instance.memory_start());
-  auto utf8_variant = static_cast<unibrow::Utf8Variant>(utf8_variant_value);
+  auto policy = static_cast<wasm::StringRefWtf8Policy>(policy_value);
   auto get_writable_bytes =
       [&](const DisallowGarbageCollection&) -> base::Vector<char> {
     return {memory_start, instance.memory_size()};
   };
-  return EncodeWtf8(isolate, utf8_variant, string, get_writable_bytes, offset,
+  return EncodeWtf8(isolate, policy, string, get_writable_bytes, offset,
                     MessageTemplate::kWasmTrapMemOutOfBounds);
 }
 
@@ -1151,19 +1146,18 @@ RUNTIME_FUNCTION(Runtime_WasmStringEncodeWtf8Array) {
   ClearThreadInWasmScope flag_scope(isolate);
   DCHECK_EQ(4, args.length());
   HandleScope scope(isolate);
-  uint32_t utf8_variant_value = args.positive_smi_value_at(0);
+  uint32_t policy_value = args.positive_smi_value_at(0);
   Handle<String> string(String::cast(args[1]), isolate);
   Handle<WasmArray> array(WasmArray::cast(args[2]), isolate);
   uint32_t start = NumberToUint32(args[3]);
 
-  DCHECK(utf8_variant_value <=
-         static_cast<uint32_t>(unibrow::Utf8Variant::kLastUtf8Variant));
-  auto utf8_variant = static_cast<unibrow::Utf8Variant>(utf8_variant_value);
+  DCHECK(policy_value <= wasm::kLastWtf8Policy);
+  auto policy = static_cast<wasm::StringRefWtf8Policy>(policy_value);
   auto get_writable_bytes =
       [&](const DisallowGarbageCollection&) -> base::Vector<char> {
     return {reinterpret_cast<char*>(array->ElementAddress(0)), array->length()};
   };
-  return EncodeWtf8(isolate, utf8_variant, string, get_writable_bytes, start,
+  return EncodeWtf8(isolate, policy, string, get_writable_bytes, start,
                     MessageTemplate::kWasmTrapArrayOutOfBounds);
 }
 
@@ -1217,13 +1211,13 @@ RUNTIME_FUNCTION(Runtime_WasmStringAsWtf8) {
   int wtf8_length = MeasureWtf8(isolate, string);
   Handle<ByteArray> array = isolate->factory()->NewByteArray(wtf8_length);
 
-  auto utf8_variant = unibrow::Utf8Variant::kWtf8;
+  wasm::StringRefWtf8Policy policy = wasm::kWtf8PolicyAccept;
   auto get_writable_bytes =
       [&](const DisallowGarbageCollection&) -> base::Vector<char> {
     return {reinterpret_cast<char*>(array->GetDataStartAddress()),
             static_cast<size_t>(wtf8_length)};
   };
-  EncodeWtf8(isolate, utf8_variant, string, get_writable_bytes, 0,
+  EncodeWtf8(isolate, policy, string, get_writable_bytes, 0,
              MessageTemplate::kWasmTrapArrayOutOfBounds);
   return *array;
 }
@@ -1233,18 +1227,17 @@ RUNTIME_FUNCTION(Runtime_WasmStringViewWtf8Encode) {
   DCHECK_EQ(6, args.length());
   HandleScope scope(isolate);
   WasmInstanceObject instance = WasmInstanceObject::cast(args[0]);
-  uint32_t utf8_variant_value = args.positive_smi_value_at(1);
+  uint32_t policy_value = args.positive_smi_value_at(1);
   Handle<ByteArray> array(ByteArray::cast(args[2]), isolate);
   uint32_t addr = NumberToUint32(args[3]);
   uint32_t start = NumberToUint32(args[4]);
   uint32_t end = NumberToUint32(args[5]);
 
-  DCHECK(utf8_variant_value <=
-         static_cast<uint32_t>(unibrow::Utf8Variant::kLastUtf8Variant));
+  DCHECK(policy_value <= wasm::kLastWtf8Policy);
   DCHECK_LE(start, end);
   DCHECK(base::IsInBounds<size_t>(start, end - start, array->length()));
 
-  auto utf8_variant = static_cast<unibrow::Utf8Variant>(utf8_variant_value);
+  auto policy = static_cast<wasm::StringRefWtf8Policy>(policy_value);
   size_t length = end - start;
 
   if (!base::IsInBounds<size_t>(addr, length, instance.memory_size())) {
@@ -1257,9 +1250,9 @@ RUNTIME_FUNCTION(Runtime_WasmStringViewWtf8Encode) {
   byte* dst = memory_start + addr;
 
   std::vector<size_t> surrogates;
-  if (utf8_variant != unibrow::Utf8Variant::kWtf8) {
+  if (policy != wasm::kWtf8PolicyAccept) {
     unibrow::Wtf8::ScanForSurrogates({src, length}, &surrogates);
-    if (utf8_variant == unibrow::Utf8Variant::kUtf8 && !surrogates.empty()) {
+    if (policy == wasm::kWtf8PolicyReject && !surrogates.empty()) {
       return ThrowWasmError(isolate,
                             MessageTemplate::kWasmTrapStringIsolatedSurrogate);
     }
@@ -1269,7 +1262,7 @@ RUNTIME_FUNCTION(Runtime_WasmStringViewWtf8Encode) {
 
   for (size_t surrogate : surrogates) {
     DCHECK_LT(surrogate, length);
-    DCHECK_EQ(utf8_variant, unibrow::Utf8Variant::kLossyUtf8);
+    DCHECK_EQ(policy, wasm::kWtf8PolicyReplace);
     unibrow::Utf8::Encode(reinterpret_cast<char*>(dst + surrogate),
                           unibrow::Utf8::kBadChar, 0, false);
   }

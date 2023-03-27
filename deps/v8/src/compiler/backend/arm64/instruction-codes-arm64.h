@@ -123,7 +123,6 @@ namespace compiler {
   V(Arm64Ubfx)                                       \
   V(Arm64Ubfx32)                                     \
   V(Arm64Ubfiz32)                                    \
-  V(Arm64Sbfiz)                                      \
   V(Arm64Bfi)                                        \
   V(Arm64Rbit)                                       \
   V(Arm64Rbit32)                                     \

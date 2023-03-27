@@ -295,8 +295,7 @@ MaybeObjectHandle StoreHandler::StoreTransition(Isolate* isolate,
   } else {
     // Ensure the transition map contains a valid prototype validity cell.
     if (!validity_cell.is_null()) {
-      transition_map->set_prototype_validity_cell(*validity_cell,
-                                                  kRelaxedStore);
+      transition_map->set_prototype_validity_cell(*validity_cell);
     }
     return MaybeObjectHandle::Weak(transition_map);
   }
@@ -393,11 +392,13 @@ void PrintSmiLoadHandler(int raw_handler, std::ostream& os) {
       }
       break;
     }
-    case LoadHandler::Kind::kConstantFromPrototype:
-      os << "kConstantFromPrototype";
+    case LoadHandler::Kind::kConstantFromPrototype: {
+      os << "kConstantFromPrototype ";
       break;
-    case LoadHandler::Kind::kAccessorFromPrototype:
-      os << "kAccessorFromPrototype";
+    }
+    case LoadHandler::Kind::kAccessor:
+      os << "kAccessor, descriptor = "
+         << LoadHandler::DescriptorBits::decode(raw_handler);
       break;
     case LoadHandler::Kind::kNativeDataProperty:
       os << "kNativeDataProperty, descriptor = "
@@ -516,8 +517,6 @@ void LoadHandler::PrintHandler(Object handler, std::ostream& os) {
   } else if (handler.IsCodeT()) {
     os << "LoadHandler(Code)("
        << Builtins::name(CodeT::cast(handler).builtin_id()) << ")";
-  } else if (handler.IsSymbol()) {
-    os << "LoadHandler(Symbol)(" << Brief(Symbol::cast(handler)) << ")";
   } else {
     LoadHandler load_handler = LoadHandler::cast(handler);
     int raw_handler = load_handler.smi_handler().ToSmi().value();

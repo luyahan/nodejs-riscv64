@@ -40,31 +40,28 @@ d8.file.execute("test/mjsunit/wasm/wasm-module-builder.js");
     builder.addFunction("main", makeSig(
       [wasmRefType(sig_index), kWasmI32, kWasmI32], [kWasmI32]))
       .addBody([kExprLocalGet, 1, kExprLocalGet, 2, kExprLocalGet, 0,
-                kExprCallRef, sig_index])
+                kExprCallRef])
       .exportFunc();
 
     builder.addFunction("test_local", kSig_i_v)
       .addBody([kExprI32Const, 55, kExprI32Const, 42,
-                kExprRefFunc, locally_defined_function.index,
-                kExprCallRef, sig_index])
+                kExprRefFunc, locally_defined_function.index, kExprCallRef])
       .exportFunc();
 
     builder.addFunction("test_js_import", kSig_i_v)
       .addBody([kExprI32Const, 15, kExprI32Const, 42,
-                kExprRefFunc, imported_js_function_index,
-                kExprCallRef, sig_index])
+                kExprRefFunc, imported_js_function_index, kExprCallRef])
       .exportFunc();
 
     builder.addFunction("test_wasm_import", kSig_i_v)
       .addBody([kExprI32Const, 15, kExprI32Const, 42,
-                kExprRefFunc, imported_wasm_function_index,
-                kExprCallRef, sig_index])
+                kExprRefFunc, imported_wasm_function_index, kExprCallRef])
       .exportFunc();
 
     builder.addFunction("test_js_api_import", kSig_i_v)
       .addBody([kExprI32Const, 3, kExprI32Const, 7,
                 kExprRefFunc, imported_js_api_function_index,
-                kExprCallRef, sig_index])
+                kExprCallRef])
       .exportFunc();
 
     builder.addExport("reexported_js_function", imported_js_function_index);
@@ -125,7 +122,7 @@ d8.file.execute("test/mjsunit/wasm/wasm-module-builder.js");
 
   builder.addFunction("main", makeSig(
       [wasmRefType(sig_index), kWasmI32], [kWasmI32]))
-      .addBody([kExprLocalGet, 1, kExprLocalGet, 0, kExprCallRef, sig_index])
+      .addBody([kExprLocalGet, 1, kExprLocalGet, 0, kExprCallRef])
       .exportFunc();
 
   var instance = builder.instantiate({});

@@ -147,7 +147,6 @@ OBJECT_TYPE_CASE(Object)
 OBJECT_TYPE_CASE(Smi)
 OBJECT_TYPE_CASE(TaggedIndex)
 OBJECT_TYPE_CASE(HeapObject)
-OBJECT_TYPE_CASE(HeapObjectReference)
 OBJECT_TYPE_LIST(OBJECT_TYPE_CASE)
 HEAP_OBJECT_ORDINARY_TYPE_LIST(OBJECT_TYPE_CASE)
 STRUCT_LIST(OBJECT_TYPE_STRUCT_CASE)
@@ -426,8 +425,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
 
       static_assert(types_have_common_values<A, PreviousType>::value,
                     "Incompatible types: this cast can never succeed.");
-      static_assert(std::is_convertible<TNode<A>, TNode<MaybeObject>>::value ||
-                        std::is_convertible<TNode<A>, TNode<Object>>::value,
+      static_assert(std::is_convertible<TNode<A>, TNode<Object>>::value,
                     "Coercion to untagged values cannot be "
                     "checked.");
       static_assert(
@@ -436,6 +434,10 @@ class V8_EXPORT_PRIVATE CodeAssembler {
           "Unnecessary CAST: types are convertible.");
 #ifdef DEBUG
       if (FLAG_debug_code) {
+        if (std::is_same<PreviousType, MaybeObject>::value) {
+          code_assembler_->GenerateCheckMaybeObjectIsObject(
+              TNode<MaybeObject>::UncheckedCast(node_), location_);
+        }
         TNode<ExternalReference> function = code_assembler_->ExternalConstant(
             ExternalReference::check_object_type());
         code_assembler_->CallCFunction(
@@ -498,6 +500,11 @@ class V8_EXPORT_PRIVATE CodeAssembler {
 #else
 #define CAST(x) Cast(x)
 #define TORQUE_CAST(x) ca_.Cast(x)
+#endif
+
+#ifdef DEBUG
+  void GenerateCheckMaybeObjectIsObject(TNode<MaybeObject> node,
+                                        const char* location);
 #endif
 
   // Constants.

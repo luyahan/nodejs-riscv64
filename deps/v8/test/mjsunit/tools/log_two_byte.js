@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Flags: --logfile='+' --log --log-code --log-function-events
+// Flags: --logfile='+' --log --log-code --log-function-events --no-stress-opt
 // Flags: --no-stress-background-compile
 
 let twoByteName = "twoByteName_🍕"

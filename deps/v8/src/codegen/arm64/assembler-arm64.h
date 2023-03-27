@@ -25,6 +25,7 @@
 #endif
 
 #if defined(V8_OS_WIN)
+#include "src/base/platform/wrappers.h"
 #include "src/diagnostics/unwinding-info-win64.h"
 #endif  // V8_OS_WIN
 
@@ -267,11 +268,6 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
       Address p, EmbeddedObjectIndex index);
   // Returns the handle for the heap object referenced at 'pc'.
   inline Handle<HeapObject> target_object_handle_at(Address pc);
-
-  // During code generation builtin targets in PC-relative call/jump
-  // instructions are temporarily encoded as builtin ID until the generated
-  // code is moved into the code space.
-  static inline Builtin target_builtin_at(Address pc);
 
   // Returns the target address for a runtime function for the call encoded
   // at 'pc'.

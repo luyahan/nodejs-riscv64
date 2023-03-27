@@ -216,7 +216,7 @@ bool ContextSerializer::ShouldBeInTheStartupObjectCache(HeapObject o) {
 }
 
 bool ContextSerializer::ShouldBeInTheSharedObjectCache(HeapObject o) {
-  // v8_flags.shared_string_table may be true during deserialization, so put
+  // FLAG_shared_string_table may be true during deserialization, so put
   // internalized strings into the shared object snapshot.
   return o.IsInternalizedString();
 }

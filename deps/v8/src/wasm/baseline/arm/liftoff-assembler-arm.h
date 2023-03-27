@@ -5,6 +5,7 @@
 #ifndef V8_WASM_BASELINE_ARM_LIFTOFF_ASSEMBLER_ARM_H_
 #define V8_WASM_BASELINE_ARM_LIFTOFF_ASSEMBLER_ARM_H_
 
+#include "src/base/platform/wrappers.h"
 #include "src/base/v8-fallthrough.h"
 #include "src/codegen/arm/register-arm.h"
 #include "src/common/globals.h"
@@ -1548,11 +1549,6 @@ void LiftoffAssembler::FillStackSlotsWithZero(int start, int size) {
   }
 
   pop(r0);
-}
-
-void LiftoffAssembler::LoadSpillAddress(Register dst, int offset,
-                                        ValueKind /* kind */) {
-  sub(dst, fp, Operand(offset));
 }
 
 #define I32_BINOP(name, instruction)                             \

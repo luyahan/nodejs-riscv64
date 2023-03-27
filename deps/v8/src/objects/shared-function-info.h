@@ -37,7 +37,6 @@ class DebugInfo;
 class IsCompiledScope;
 template <typename>
 class Signature;
-class WasmFunctionData;
 class WasmCapiFunctionData;
 class WasmExportedFunctionData;
 class WasmJSFunctionData;
@@ -345,7 +344,6 @@ class SharedFunctionInfo
 
 #if V8_ENABLE_WEBASSEMBLY
   inline bool HasAsmWasmData() const;
-  inline bool HasWasmFunctionData() const;
   inline bool HasWasmExportedFunctionData() const;
   inline bool HasWasmJSFunctionData() const;
   inline bool HasWasmCapiFunctionData() const;
@@ -355,7 +353,6 @@ class SharedFunctionInfo
 
   V8_EXPORT_PRIVATE WasmExportedFunctionData
   wasm_exported_function_data() const;
-  WasmFunctionData wasm_function_data() const;
   WasmJSFunctionData wasm_js_function_data() const;
   WasmCapiFunctionData wasm_capi_function_data() const;
   WasmResumeData wasm_resume_data() const;

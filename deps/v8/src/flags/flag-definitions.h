@@ -229,8 +229,7 @@ DEFINE_BOOL(harmony_shipping, true, "enable all shipped harmony features")
   V(harmony_temporal, "Temporal")                                              \
   V(harmony_shadow_realm, "harmony ShadowRealm")                               \
   V(harmony_struct, "harmony structs, shared structs, and shared arrays")      \
-  V(harmony_change_array_by_copy, "harmony change-Array-by-copy")              \
-  V(harmony_regexp_unicode_sets, "harmony RegExp Unicode Sets")
+  V(harmony_change_array_by_copy, "harmony change-Array-by-copy")
 
 #ifdef V8_INTL_SUPPORT
 #define HARMONY_INPROGRESS(V) \
@@ -256,6 +255,7 @@ DEFINE_BOOL(harmony_shipping, true, "enable all shipped harmony features")
 #define HARMONY_SHIPPING_BASE(V)                                      \
   V(harmony_sharedarraybuffer, "harmony sharedarraybuffer")           \
   V(harmony_atomics, "harmony atomics")                               \
+  V(harmony_object_has_own, "harmony Object.hasOwn")                  \
   V(harmony_class_static_blocks, "harmony static initializer blocks") \
   V(harmony_array_find_last, "harmony array find last helpers")
 
@@ -455,20 +455,12 @@ DEFINE_BOOL(maglev_inlining, false,
             "enable inlining in the maglev optimizing compiler")
 DEFINE_BOOL(maglev_reuse_stack_slots, false,
             "reuse stack slots in the maglev optimizing compiler")
-
-// We stress maglev by setting a very low interrupt budget for maglev. This
-// way, we still gather *some* feedback before compiling optimized code.
-DEFINE_BOOL(stress_maglev, false, "trigger maglev compilation earlier")
-DEFINE_IMPLICATION(stress_maglev, maglev)
-DEFINE_VALUE_IMPLICATION(stress_maglev, interrupt_budget_for_maglev, 128)
 #else
 #define V8_ENABLE_MAGLEV_BOOL false
 DEFINE_BOOL_READONLY(maglev, false, "enable the maglev optimizing compiler")
-DEFINE_BOOL_READONLY(stress_maglev, false, "trigger maglev compilation earlier")
 #endif  // V8_ENABLE_MAGLEV
 
 DEFINE_STRING(maglev_filter, "*", "optimization filter for the maglev compiler")
-DEFINE_BOOL(maglev_assert, false, "insert extra assertion in maglev code")
 DEFINE_BOOL(maglev_break_on_entry, false, "insert an int3 on maglev entries")
 DEFINE_BOOL(print_maglev_graph, false, "print maglev graph")
 DEFINE_BOOL(print_maglev_code, false, "print maglev code")
@@ -637,7 +629,6 @@ DEFINE_BOOL(stress_lazy_source_positions, false,
             "collect lazy source positions immediately after lazy compile")
 DEFINE_STRING(print_bytecode_filter, "*",
               "filter for selecting which functions to print bytecode")
-DEFINE_BOOL(omit_default_ctors, false, "omit calling default ctors in bytecode")
 #ifdef V8_TRACE_UNOPTIMIZED
 DEFINE_BOOL(trace_unoptimized, false,
             "trace the bytecodes executed by all unoptimized execution")
@@ -873,13 +864,7 @@ DEFINE_BOOL(turbo_inline_array_builtins, true,
 DEFINE_BOOL(use_osr, true, "use on-stack replacement")
 DEFINE_BOOL(concurrent_osr, true, "enable concurrent OSR")
 DEFINE_WEAK_IMPLICATION(future, concurrent_osr)
-
 DEFINE_BOOL(trace_osr, false, "trace on-stack replacement")
-DEFINE_BOOL(log_or_trace_osr, false,
-            "internal helper flag, please use --trace-osr instead.")
-DEFINE_IMPLICATION(trace_osr, log_or_trace_osr)
-DEFINE_IMPLICATION(log_function_events, log_or_trace_osr)
-
 DEFINE_BOOL(analyze_environment_liveness, true,
             "analyze liveness of environment slots and zap dead values")
 DEFINE_BOOL(trace_environment_liveness, false,
@@ -919,15 +904,8 @@ DEFINE_IMPLICATION(turbo_stress_instruction_scheduling,
 DEFINE_BOOL(turbo_store_elimination, true,
             "enable store-store elimination in TurboFan")
 DEFINE_BOOL(trace_store_elimination, false, "trace store elimination")
-
-#if defined(V8_TARGET_ARCH_X64) || defined(V8_TARGET_ARCH_IA32)
 DEFINE_BOOL(turbo_rewrite_far_jumps, true,
             "rewrite far to near jumps (ia32,x64)")
-#else
-DEFINE_BOOL_READONLY(turbo_rewrite_far_jumps, false,
-                     "rewrite far to near jumps (ia32,x64)")
-#endif
-
 DEFINE_BOOL(
     stress_gc_during_compilation, false,
     "simulate GC/compiler thread race related to https://crbug.com/v8/8520")
@@ -974,10 +952,6 @@ DEFINE_VALUE_IMPLICATION(optimize_for_size, max_semi_space_size, size_t{1})
 DEFINE_BOOL(wasm_generic_wrapper, true,
             "allow use of the generic js-to-wasm wrapper instead of "
             "per-signature wrappers")
-DEFINE_BOOL(enable_wasm_arm64_generic_wrapper, false,
-            "allow use of the generic js-to-wasm wrapper instead of "
-            "per-signature wrappers on arm64")
-DEFINE_WEAK_IMPLICATION(future, enable_wasm_arm64_generic_wrapper)
 DEFINE_BOOL(expose_wasm, true, "expose wasm interface to JavaScript")
 DEFINE_INT(wasm_num_compilation_tasks, 128,
            "maximum number of parallel compilation tasks for wasm")
@@ -1027,8 +1001,6 @@ DEFINE_DEBUG_BOOL(trace_wasm_streaming, false,
                   "trace streaming compilation of wasm code")
 DEFINE_DEBUG_BOOL(trace_wasm_stack_switching, false,
                   "trace wasm stack switching")
-DEFINE_INT(wasm_stack_switching_stack_size, V8_DEFAULT_STACK_SIZE_KB,
-           "default size of stacks for wasm stack-switching (in kB)")
 DEFINE_BOOL(liftoff, true,
             "enable Liftoff, the baseline compiler for WebAssembly")
 DEFINE_BOOL(liftoff_only, false,
@@ -1055,14 +1027,6 @@ DEFINE_INT(wasm_tier_mask_for_testing, 0,
 DEFINE_INT(wasm_debug_mask_for_testing, 0,
            "bitmask of functions to compile for debugging, only applies if the "
            "tier is Liftoff")
-// TODO(clemensb): Introduce experimental_wasm_pgo to read from a custom section
-// instead of from a local file.
-DEFINE_BOOL(
-    experimental_wasm_pgo_to_file, false,
-    "experimental: dump Wasm PGO information to a local file (for testing)")
-DEFINE_BOOL(
-    experimental_wasm_pgo_from_file, false,
-    "experimental: read and use Wasm PGO data from a local file (for testing)")
 
 DEFINE_BOOL(validate_asm, true, "validate asm.js modules before compiling")
 // asm.js validation is disabled since it triggers wasm code generation.
@@ -1129,10 +1093,15 @@ DEFINE_BOOL(trace_wasm_speculative_inlining, false,
 DEFINE_BOOL(trace_wasm_typer, false, "trace wasm typer")
 DEFINE_BOOL(wasm_type_canonicalization, false,
             "apply isorecursive canonicalization on wasm types")
+DEFINE_IMPLICATION(wasm_speculative_inlining, wasm_dynamic_tiering)
 DEFINE_IMPLICATION(wasm_speculative_inlining, wasm_inlining)
 DEFINE_WEAK_IMPLICATION(experimental_wasm_gc, wasm_speculative_inlining)
 DEFINE_WEAK_IMPLICATION(experimental_wasm_typed_funcref,
                         wasm_type_canonicalization)
+// Speculative inlining needs type feedback from Liftoff and compilation in
+// Turbofan.
+DEFINE_NEG_NEG_IMPLICATION(liftoff, wasm_speculative_inlining)
+DEFINE_NEG_IMPLICATION(liftoff_only, wasm_speculative_inlining)
 
 DEFINE_BOOL(wasm_loop_unrolling, true,
             "enable loop unrolling for wasm functions")
@@ -1222,8 +1191,6 @@ DEFINE_BOOL(separate_gc_phases, false,
 DEFINE_BOOL(global_gc_scheduling, true,
             "enable GC scheduling based on global memory")
 DEFINE_BOOL(gc_global, false, "always perform global GCs")
-DEFINE_BOOL(shared_space, false,
-            "Implement shared heap as shared space on a main isolate.")
 
 // TODO(12950): The next two flags only have an effect if
 // V8_ENABLE_ALLOCATION_TIMEOUT is set, so we should only define them in that
@@ -1383,9 +1350,6 @@ DEFINE_IMPLICATION(trace_detached_contexts, track_detached_contexts)
 DEFINE_BOOL(verify_heap, false, "verify heap pointers before and after GC")
 DEFINE_BOOL(verify_heap_skip_remembered_set, false,
             "disable remembered set verification")
-#else
-DEFINE_BOOL_READONLY(verify_heap, false,
-                     "verify heap pointers before and after GC")
 #endif
 DEFINE_BOOL(move_object_start, true, "enable moving of object starts")
 DEFINE_BOOL(memory_reducer, true, "use memory reducer")
@@ -1777,7 +1741,7 @@ DEFINE_IMPLICATION(allow_natives_for_differential_fuzzing, allow_natives_syntax)
 DEFINE_IMPLICATION(allow_natives_for_differential_fuzzing, fuzzing)
 DEFINE_BOOL(parse_only, false, "only parse the sources")
 
-// simulator-arm.cc and simulator-arm64.cc.
+// simulator-arm.cc, simulator-arm64.cc and simulator-mips.cc
 #ifdef USE_SIMULATOR
 DEFINE_BOOL(trace_sim, false, "Trace simulator execution")
 DEFINE_BOOL(debug_sim, false, "Enable debugging the simulator")
@@ -1795,7 +1759,7 @@ DEFINE_INT(sim_stack_alignment, 8,
            "Stack alingment in bytes in simulator (4 or 8, 8 is default)")
 #endif
 DEFINE_INT(sim_stack_size, 2 * MB / KB,
-           "Stack size of the ARM64, MIPS64 and PPC64 simulator "
+           "Stack size of the ARM64, MIPS, MIPS64 and PPC64 simulator "
            "in kBytes (default is 2 MB)")
 DEFINE_BOOL(trace_sim_messages, false,
             "Trace simulator debug messages. Implied by --trace-sim.")
@@ -2105,16 +2069,12 @@ DEFINE_BOOL(log, false,
             "Minimal logging (no API, code, GC, suspect, or handles samples).")
 DEFINE_BOOL(log_all, false, "Log all events to the log file.")
 
-DEFINE_BOOL(log_source_code, false, "Log source code.")
-DEFINE_BOOL(log_source_position, false, "Log detailed source information.")
 DEFINE_BOOL(log_code, false,
             "Log code events to the log file without profiling.")
-DEFINE_WEAK_IMPLICATION(log_code, log_source_code)
-DEFINE_WEAK_IMPLICATION(log_code, log_source_position)
-DEFINE_BOOL(log_feedback_vector, false, "Log FeedbackVectors on first creation")
 DEFINE_BOOL(log_code_disassemble, false,
             "Log all disassembled code to the log file.")
 DEFINE_IMPLICATION(log_code_disassemble, log_code)
+DEFINE_BOOL(log_source_code, false, "Log source code.")
 DEFINE_BOOL(log_function_events, false,
             "Log function events "
             "(parse, compile, execute) separately.")

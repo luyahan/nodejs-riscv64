@@ -14,6 +14,7 @@
 #include "src/base/iterator.h"
 #include "src/base/logging.h"
 #include "src/base/macros.h"
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/cpu-features.h"
 #include "src/codegen/ia32/assembler-ia32.h"
 #include "src/codegen/ia32/register-ia32.h"
@@ -3308,12 +3309,6 @@ void InstructionSelector::VisitF32x4Qfma(Node* node) {
 
 void InstructionSelector::VisitF32x4Qfms(Node* node) {
   VisitRRRR(this, node, kIA32F32x4Qfms);
-}
-
-void InstructionSelector::VisitI16x8DotI8x16I7x16S(Node* node) {
-  IA32OperandGenerator g(this);
-  Emit(kIA32I16x8DotI8x16I7x16S, g.DefineAsRegister(node),
-       g.UseUniqueRegister(node->InputAt(0)), g.UseRegister(node->InputAt(1)));
 }
 
 void InstructionSelector::AddOutputToSelectContinuation(OperandGenerator* g,

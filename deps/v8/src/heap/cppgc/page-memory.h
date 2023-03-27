@@ -82,9 +82,11 @@ class V8_EXPORT_PRIVATE PageMemoryRegion {
   virtual void UnprotectForTesting() = 0;
 
  protected:
-  PageMemoryRegion(PageAllocator&, MemoryRegion, bool);
+  PageMemoryRegion(PageAllocator&, FatalOutOfMemoryHandler&, MemoryRegion,
+                   bool);
 
   PageAllocator& allocator_;
+  FatalOutOfMemoryHandler& oom_handler_;
   const MemoryRegion reserved_region_;
   const bool is_large_;
 };
@@ -108,8 +110,7 @@ class V8_EXPORT_PRIVATE NormalPageMemoryRegion final : public PageMemoryRegion {
 
   // Allocates a normal page at |writeable_base| address. Changes page
   // protection.
-  // Returns true when the allocation was successful and false otherwise.
-  V8_WARN_UNUSED_RESULT bool TryAllocate(Address writeable_base);
+  void Allocate(Address writeable_base);
 
   // Frees a normal page at at |writeable_base| address. Changes page
   // protection.
@@ -202,7 +203,7 @@ class V8_EXPORT_PRIVATE PageBackend final {
   // Allocates a normal page from the backend.
   //
   // Returns the writeable base of the region.
-  Address TryAllocateNormalPageMemory();
+  Address AllocateNormalPageMemory();
 
   // Returns normal page memory back to the backend. Expects the
   // |writeable_base| returned by |AllocateNormalMemory()|.
@@ -211,7 +212,7 @@ class V8_EXPORT_PRIVATE PageBackend final {
   // Allocates a large page from the backend.
   //
   // Returns the writeable base of the region.
-  Address TryAllocateLargePageMemory(size_t size);
+  Address AllocateLargePageMemory(size_t size);
 
   // Returns large page memory back to the backend. Expects the |writeable_base|
   // returned by |AllocateLargePageMemory()|.

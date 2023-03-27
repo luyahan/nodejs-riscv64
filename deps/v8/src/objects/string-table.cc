@@ -349,8 +349,7 @@ class InternalizedStringKey final : public StringTableKey {
     // When sharing the string table, it's possible that another thread already
     // internalized the key, in which case StringTable::LookupKey will perform a
     // redundant lookup and return the already internalized copy.
-    DCHECK_IMPLIES(!v8_flags.shared_string_table,
-                   !string->IsInternalizedString());
+    DCHECK_IMPLIES(!FLAG_shared_string_table, !string->IsInternalizedString());
     DCHECK(string->IsFlat());
     DCHECK(String::IsHashFieldComputed(hash));
   }
@@ -374,7 +373,7 @@ class InternalizedStringKey final : public StringTableKey {
       case StringTransitionStrategy::kAlreadyTransitioned:
         // We can see already internalized strings here only when sharing the
         // string table and allowing concurrent internalization.
-        DCHECK(v8_flags.shared_string_table);
+        DCHECK(FLAG_shared_string_table);
         return;
     }
 
@@ -382,37 +381,23 @@ class InternalizedStringKey final : public StringTableKey {
     // requiring a copy can transition any further.
     StringShape shape(*string_);
     // External strings get special treatment, to avoid copying their
-    // contents as long as they are not uncached or the string table is shared.
-    // If the string table is shared, another thread could lookup a string with
-    // the same content before this thread completes MakeThin (which sets the
-    // resource), resulting in a string table hit returning the string we just
-    // created that is not correctly initialized.
-    const bool can_avoid_copy =
-        !v8_flags.shared_string_table && !shape.IsUncachedExternal();
-    if (can_avoid_copy && shape.IsExternalOneByte()) {
-      // Shared external strings are always in-place internalizable.
-      // If this assumption is invalidated in the future, make sure that we
-      // fully initialize (copy contents) for shared external strings, as the
-      // original string is not transitioned to a ThinString (setting the
-      // resource) immediately.
-      DCHECK(!shape.IsShared());
+    // contents as long as they are not uncached.
+    if (shape.IsExternalOneByte() && !shape.IsUncachedExternal()) {
+      // TODO(syg): External strings not yet supported.
+      DCHECK(!FLAG_shared_string_table);
       string_ =
           isolate->factory()->InternalizeExternalString<ExternalOneByteString>(
               string_);
-    } else if (can_avoid_copy && shape.IsExternalTwoByte()) {
-      // Shared external strings are always in-place internalizable.
-      // If this assumption is invalidated in the future, make sure that we
-      // fully initialize (copy contents) for shared external strings, as the
-      // original string is not transitioned to a ThinString (setting the
-      // resource) immediately.
-      DCHECK(!shape.IsShared());
+    } else if (shape.IsExternalTwoByte() && !shape.IsUncachedExternal()) {
+      // TODO(syg): External strings not yet supported.
+      DCHECK(!FLAG_shared_string_table);
       string_ =
           isolate->factory()->InternalizeExternalString<ExternalTwoByteString>(
               string_);
     } else {
       // Otherwise allocate a new internalized string.
-      string_ = isolate->factory()->NewInternalizedStringImpl(string_, length(),
-                                                              raw_hash_field());
+      string_ = isolate->factory()->NewInternalizedStringImpl(
+          string_, string_->length(), string_->raw_hash_field());
     }
   }
 
@@ -447,12 +432,13 @@ namespace {
 
 void SetInternalizedReference(Isolate* isolate, String string,
                               String internalized) {
+  // TODO(v8:12007): Support external strings.
   DCHECK(!string.IsThinString());
-  DCHECK(!string.IsInternalizedString());
   DCHECK(internalized.IsInternalizedString());
-  DCHECK(!internalized.HasInternalizedForwardingIndex(kAcquireLoad));
-  if (string.IsShared() || v8_flags.always_use_string_forwarding_table) {
-    uint32_t field = string.raw_hash_field(kAcquireLoad);
+  DCHECK(!internalized.HasForwardingIndex(kAcquireLoad));
+  if ((string.IsShared() || FLAG_always_use_string_forwarding_table) &&
+      !string.IsExternalString()) {
+    uint32_t field = string.raw_hash_field();
     // Don't use the forwarding table for strings that have an integer index.
     // Using the hash field for the integer index is more beneficial than
     // using it to store the forwarding index to the internalized string.
@@ -461,27 +447,20 @@ void SetInternalizedReference(Isolate* isolate, String string,
     // to prevent too many copies of the string in the forwarding table.
     if (Name::IsInternalizedForwardingIndex(field)) return;
 
-    // If we already have an entry for an external resource in the table, update
-    // the entry instead of creating a new one. There is no guarantee that we
-    // will always update existing records instead of creating new ones, but
-    // races should be rare.
-    if (Name::IsForwardingIndex(field)) {
-      const int forwarding_index =
-          Name::ForwardingIndexValueBits::decode(field);
-      isolate->string_forwarding_table()->UpdateForwardString(forwarding_index,
-                                                              internalized);
-      // Update the forwarding index type to include internalized.
-      field = Name::IsInternalizedForwardingIndexBit::update(field, true);
-      string.set_raw_hash_field(field, kReleaseStore);
-    } else {
-      const int forwarding_index =
-          isolate->string_forwarding_table()->AddForwardString(string,
-                                                               internalized);
-      string.set_raw_hash_field(
-          String::CreateInternalizedForwardingIndex(forwarding_index),
-          kReleaseStore);
-    }
+    const int forwarding_index =
+        isolate->string_forwarding_table()->AddForwardString(string,
+                                                             internalized);
+    string.set_raw_hash_field(
+        String::CreateInternalizedForwardingIndex(forwarding_index),
+        kReleaseStore);
   } else {
+    if (V8_UNLIKELY(FLAG_always_use_string_forwarding_table)) {
+      // It is possible that the string has a forwarding index (the string was
+      // externalized after it had its forwarding index set). Overwrite the
+      // hash field to avoid having a ThinString with a forwarding index.
+      DCHECK(string.IsExternalString());
+      string.set_raw_hash_field(internalized.raw_hash_field());
+    }
     DCHECK(!string.HasForwardingIndex(kAcquireLoad));
     string.MakeThin(isolate, internalized);
   }
@@ -592,7 +571,7 @@ Handle<String> StringTable::LookupKey(IsolateT* isolate, StringTableKey* key) {
   if (entry.is_found()) {
     Handle<String> result(String::cast(current_data->Get(isolate, entry)),
                           isolate);
-    DCHECK_IMPLIES(v8_flags.shared_string_table, result->InSharedHeap());
+    DCHECK_IMPLIES(FLAG_shared_string_table, result->InSharedHeap());
     return result;
   }
 
@@ -612,7 +591,7 @@ Handle<String> StringTable::LookupKey(IsolateT* isolate, StringTableKey* key) {
       // This entry is empty, so write it and register that we added an
       // element.
       Handle<String> new_string = key->GetHandleForInsertion();
-      DCHECK_IMPLIES(v8_flags.shared_string_table, new_string->IsShared());
+      DCHECK_IMPLIES(FLAG_shared_string_table, new_string->IsShared());
       data->Set(entry, *new_string);
       data->ElementAdded();
       return new_string;
@@ -620,7 +599,7 @@ Handle<String> StringTable::LookupKey(IsolateT* isolate, StringTableKey* key) {
       // This entry was deleted, so overwrite it and register that we
       // overwrote a deleted element.
       Handle<String> new_string = key->GetHandleForInsertion();
-      DCHECK_IMPLIES(v8_flags.shared_string_table, new_string->IsShared());
+      DCHECK_IMPLIES(FLAG_shared_string_table, new_string->IsShared());
       data->Set(entry, *new_string);
       data->DeletedElementOverwritten();
       return new_string;
@@ -773,7 +752,7 @@ Address StringTable::Data::TryStringToIndexOrLookupExisting(Isolate* isolate,
   if (!string.IsInternalizedString()) {
     SetInternalizedReference(isolate, string, internalized);
   } else {
-    DCHECK(v8_flags.shared_string_table);
+    DCHECK(FLAG_shared_string_table);
   }
   return internalized.ptr();
 }
@@ -785,7 +764,7 @@ Address StringTable::TryStringToIndexOrLookupExisting(Isolate* isolate,
   if (string.IsInternalizedString()) {
     // string could be internalized, if the string table is shared and another
     // thread internalized it.
-    DCHECK(v8_flags.shared_string_table);
+    DCHECK(FLAG_shared_string_table);
     return raw_string;
   }
 

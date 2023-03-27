@@ -63,7 +63,7 @@ T ForwardingAddress(T heap_obj) {
   if (map_word.IsForwardingAddress()) {
     return T::cast(map_word.ToForwardingAddress());
   } else if (Heap::InFromPage(heap_obj)) {
-    DCHECK(!v8_flags.minor_mc);
+    DCHECK(!FLAG_minor_mc);
     return T();
   } else {
     return heap_obj;
@@ -77,20 +77,19 @@ base::EnumSet<CodeFlushMode> Heap::GetCodeFlushMode(Isolate* isolate) {
   }
 
   base::EnumSet<CodeFlushMode> code_flush_mode;
-  if (v8_flags.flush_bytecode) {
+  if (FLAG_flush_bytecode) {
     code_flush_mode.Add(CodeFlushMode::kFlushBytecode);
   }
 
-  if (v8_flags.flush_baseline_code) {
+  if (FLAG_flush_baseline_code) {
     code_flush_mode.Add(CodeFlushMode::kFlushBaselineCode);
   }
 
-  if (v8_flags.stress_flush_code) {
+  if (FLAG_stress_flush_code) {
     // This is to check tests accidentally don't miss out on adding either flush
     // bytecode or flush code along with stress flush code. stress_flush_code
     // doesn't do anything if either one of them isn't enabled.
-    DCHECK(v8_flags.fuzzing || v8_flags.flush_baseline_code ||
-           v8_flags.flush_bytecode);
+    DCHECK(FLAG_fuzzing || FLAG_flush_baseline_code || FLAG_flush_bytecode);
     code_flush_mode.Add(CodeFlushMode::kStressFlushCode);
   }
 
@@ -241,7 +240,7 @@ void Heap::FinalizeExternalString(String string) {
   DCHECK(string.IsExternalString());
   ExternalString ext_string = ExternalString::cast(string);
 
-  if (!v8_flags.enable_third_party_heap) {
+  if (!FLAG_enable_third_party_heap) {
     Page* page = Page::FromHeapObject(string);
     page->DecrementExternalBackingStoreBytes(
         ExternalBackingStoreType::kExternalString,
@@ -419,13 +418,13 @@ void Heap::UpdateAllocationSite(Map map, HeapObject object,
   DCHECK_NE(pretenuring_feedback, &global_pretenuring_feedback_);
 #ifdef DEBUG
   BasicMemoryChunk* chunk = BasicMemoryChunk::FromHeapObject(object);
-  DCHECK_IMPLIES(chunk->IsToPage(),
-                 v8_flags.minor_mc ||
-                     chunk->IsFlagSet(MemoryChunk::PAGE_NEW_NEW_PROMOTION));
+  DCHECK_IMPLIES(
+      chunk->IsToPage(),
+      FLAG_minor_mc || chunk->IsFlagSet(MemoryChunk::PAGE_NEW_NEW_PROMOTION));
   DCHECK_IMPLIES(!chunk->InYoungGeneration(),
                  chunk->IsFlagSet(MemoryChunk::PAGE_NEW_OLD_PROMOTION));
 #endif
-  if (!v8_flags.allocation_site_pretenuring ||
+  if (!FLAG_allocation_site_pretenuring ||
       !AllocationSite::CanTrack(map.instance_type())) {
     return;
   }
@@ -494,7 +493,7 @@ bool Heap::IsPendingAllocationInternal(HeapObject object) {
 
 bool Heap::IsPendingAllocation(HeapObject object) {
   bool result = IsPendingAllocationInternal(object);
-  if (v8_flags.trace_pending_allocations && result) {
+  if (FLAG_trace_pending_allocations && result) {
     StdoutStream{} << "Pending allocation: " << std::hex << "0x" << object.ptr()
                    << "\n";
   }
@@ -617,7 +616,7 @@ AlwaysAllocateScopeForTesting::AlwaysAllocateScopeForTesting(Heap* heap)
 
 CodeSpaceMemoryModificationScope::CodeSpaceMemoryModificationScope(Heap* heap)
     :
-#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT || V8_HEAP_USE_PKU_JIT_WRITE_PROTECT
+#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT
       rwx_write_scope_("A part of CodeSpaceMemoryModificationScope"),
 #endif
       heap_(heap) {
@@ -659,10 +658,6 @@ uintptr_t Heap::code_page_collection_memory_modification_scope_depth() {
   return local_heap->code_page_collection_memory_modification_scope_depth_;
 }
 
-PagedNewSpace* Heap::paged_new_space() const {
-  return PagedNewSpace::From(new_space());
-}
-
 CodeSpaceMemoryModificationScope::~CodeSpaceMemoryModificationScope() {
   if (heap_->write_protect_code_memory()) {
     heap_->decrement_code_space_memory_modification_scope_depth();
@@ -680,7 +675,7 @@ CodeSpaceMemoryModificationScope::~CodeSpaceMemoryModificationScope() {
 CodePageCollectionMemoryModificationScope::
     CodePageCollectionMemoryModificationScope(Heap* heap)
     :
-#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT || V8_HEAP_USE_PKU_JIT_WRITE_PROTECT
+#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT
       rwx_write_scope_("A part of CodePageCollectionMemoryModificationScope"),
 #endif
       heap_(heap) {
@@ -701,7 +696,7 @@ CodePageCollectionMemoryModificationScope::
 #ifdef V8_ENABLE_THIRD_PARTY_HEAP
 CodePageMemoryModificationScope::CodePageMemoryModificationScope(Code code)
     :
-#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT || V8_HEAP_USE_PKU_JIT_WRITE_PROTECT
+#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT
       rwx_write_scope_("A part of CodePageMemoryModificationScope"),
 #endif
       chunk_(nullptr),
@@ -715,7 +710,7 @@ CodePageMemoryModificationScope::CodePageMemoryModificationScope(Code code)
 CodePageMemoryModificationScope::CodePageMemoryModificationScope(
     BasicMemoryChunk* chunk)
     :
-#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT || V8_HEAP_USE_PKU_JIT_WRITE_PROTECT
+#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT
       rwx_write_scope_("A part of CodePageMemoryModificationScope"),
 #endif
       chunk_(chunk),
@@ -735,6 +730,7 @@ CodePageMemoryModificationScope::~CodePageMemoryModificationScope() {
 }
 
 IgnoreLocalGCRequests::IgnoreLocalGCRequests(Heap* heap) : heap_(heap) {
+  DCHECK_EQ(ThreadId::Current(), heap_->isolate()->thread_id());
   heap_->ignore_local_gc_requests_depth_++;
 }
 

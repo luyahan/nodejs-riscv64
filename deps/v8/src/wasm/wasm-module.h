@@ -450,7 +450,6 @@ class CallSiteFeedback {
   bool is_polymorphic() const { return index_or_count_ <= -2; }
   bool is_invalid() const { return index_or_count_ == -1; }
   const PolymorphicCase* polymorphic_storage() const {
-    DCHECK(is_polymorphic());
     return reinterpret_cast<PolymorphicCase*>(frequency_or_ool_);
   }
 
@@ -478,7 +477,7 @@ struct FunctionTypeFeedback {
 struct TypeFeedbackStorage {
   std::unordered_map<uint32_t, FunctionTypeFeedback> feedback_for_function;
   // Accesses to {feedback_for_function} are guarded by this mutex.
-  mutable base::Mutex mutex;
+  base::Mutex mutex;
 };
 
 struct WasmTable;
@@ -610,6 +609,23 @@ struct V8_EXPORT_PRIVATE WasmModule {
 // Static representation of a wasm indirect call table.
 struct WasmTable {
   MOVE_ONLY_WITH_DEFAULT_CONSTRUCTORS(WasmTable);
+
+  // 'module' can be nullptr
+  // TODO(9495): Update this function as more table types are supported, or
+  // remove it completely when all reference types are allowed.
+  static bool IsValidTableType(ValueType type, const WasmModule* module) {
+    if (!type.is_object_reference()) return false;
+    HeapType heap_type = type.heap_type();
+    return heap_type == HeapType::kFunc || heap_type == HeapType::kExtern ||
+           heap_type == HeapType::kAny || heap_type == HeapType::kData ||
+           heap_type == HeapType::kArray || heap_type == HeapType::kEq ||
+           heap_type == HeapType::kI31 || heap_type == HeapType::kString ||
+           heap_type == HeapType::kStringViewWtf8 ||
+           heap_type == HeapType::kStringViewWtf16 ||
+           heap_type == HeapType::kStringViewIter ||
+           (module != nullptr && heap_type.is_index() &&
+            module->has_signature(heap_type.ref_index()));
+  }
 
   ValueType type = kWasmVoid;     // table type.
   uint32_t initial_size = 0;      // initial table size.
@@ -794,12 +810,6 @@ size_t PrintSignature(base::Vector<char> buffer, const wasm::FunctionSig*,
 
 V8_EXPORT_PRIVATE size_t
 GetWireBytesHash(base::Vector<const uint8_t> wire_bytes);
-
-void DumpProfileToFile(const WasmModule* module,
-                       base::Vector<const uint8_t> wire_bytes);
-
-void LoadProfileFromFile(WasmModule* module,
-                         base::Vector<const uint8_t> wire_bytes);
 
 }  // namespace v8::internal::wasm
 

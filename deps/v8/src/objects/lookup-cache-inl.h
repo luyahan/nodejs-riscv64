@@ -24,10 +24,7 @@ int DescriptorLookupCache::Hash(Map source, Name name) {
 int DescriptorLookupCache::Lookup(Map source, Name name) {
   int index = Hash(source, name);
   Key& key = keys_[index];
-  // Pointers in the table might be stale, so use SafeEquals.
-  if (key.source.SafeEquals(source) && key.name.SafeEquals(name)) {
-    return results_[index];
-  }
+  if ((key.source == source) && (key.name == name)) return results_[index];
   return kAbsent;
 }
 

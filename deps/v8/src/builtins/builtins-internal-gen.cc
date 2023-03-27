@@ -16,7 +16,6 @@
 #include "src/ic/keyed-store-generic.h"
 #include "src/logging/counters.h"
 #include "src/objects/debug-objects.h"
-#include "src/objects/scope-info.h"
 #include "src/objects/shared-function-info.h"
 #include "src/runtime/runtime.h"
 
@@ -1270,11 +1269,11 @@ void Builtins::Generate_CEntry_Return2_SaveFPRegs_ArgvOnStack_BuiltinExit(
   Generate_CEntry(masm, 2, SaveFPRegsMode::kSave, ArgvMode::kStack, true);
 }
 
-#if !defined(V8_TARGET_ARCH_ARM)
+#if !defined(V8_TARGET_ARCH_ARM) && !defined(V8_TARGET_ARCH_MIPS)
 void Builtins::Generate_MemCopyUint8Uint8(MacroAssembler* masm) {
   masm->Call(BUILTIN_CODE(masm->isolate(), Illegal), RelocInfo::CODE_TARGET);
 }
-#endif  // !defined(V8_TARGET_ARCH_ARM)
+#endif  // !defined(V8_TARGET_ARCH_ARM) && !defined(V8_TARGET_ARCH_MIPS)
 
 #ifndef V8_TARGET_ARCH_IA32
 void Builtins::Generate_MemMove(MacroAssembler* masm) {
@@ -1300,16 +1299,6 @@ void Builtins::Generate_BaselineOnStackReplacement(MacroAssembler* masm) {
   masm->Trap();
 }
 #endif
-
-// TODO(v8:11421): Remove #if once the Maglev compiler is ported to other
-// architectures.
-#ifndef V8_TARGET_ARCH_X64
-void Builtins::Generate_MaglevOnStackReplacement(MacroAssembler* masm) {
-  using D = OnStackReplacementDescriptor;
-  static_assert(D::kParameterCount == 1);
-  masm->Trap();
-}
-#endif  // V8_TARGET_ARCH_X64
 
 // ES6 [[Get]] operation.
 TF_BUILTIN(GetProperty, CodeStubAssembler) {
@@ -1500,33 +1489,6 @@ TF_BUILTIN(InstantiateAsmJs, CodeStubAssembler) {
 
   TNode<CodeT> code = LoadJSFunctionCode(function);
   TailCallJSCode(code, context, function, new_target, arg_count);
-}
-
-TF_BUILTIN(FindNonDefaultConstructor, CodeStubAssembler) {
-  auto this_function = Parameter<JSFunction>(Descriptor::kThisFunction);
-  auto new_target = Parameter<Object>(Descriptor::kNewTarget);
-  auto context = Parameter<Context>(Descriptor::kContext);
-
-  TVARIABLE(Object, constructor);
-  Label found_default_base_ctor(this, &constructor),
-      found_something_else(this, &constructor);
-
-  FindNonDefaultConstructor(context, this_function, constructor,
-                            &found_default_base_ctor, &found_something_else);
-
-  BIND(&found_default_base_ctor);
-  {
-    // Create an object directly, without calling the default base ctor.
-    TNode<Object> instance = CallBuiltin(Builtin::kFastNewObject, context,
-                                         constructor.value(), new_target);
-    Return(TrueConstant(), instance);
-  }
-
-  BIND(&found_something_else);
-  {
-    // Not a base ctor (or bailed out).
-    Return(FalseConstant(), constructor.value());
-  }
 }
 
 }  // namespace internal

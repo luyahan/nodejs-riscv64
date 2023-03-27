@@ -4,13 +4,6 @@
 
 // Flags: --allow-natives-syntax --noturbo-inlining
 
-// Helper function to compare two arguments objects of strict mode functions.
-// Access to arguments.callee results in TypeError for them, so assertEquals
-// can't be used directly.
-function assertEqualsArgumentsStrict(a, b) {
-  assertEquals(JSON.stringify(a), JSON.stringify(b));
-}
-
 // Ensure that arguments in sloppy mode function works
 // properly when called directly from optimized code.
 (function() {
@@ -35,13 +28,13 @@ function assertEqualsArgumentsStrict(a, b) {
   function f() { return g(1, 2, 3); }
 
   %PrepareFunctionForOptimization(f);
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
   %OptimizeFunctionOnNextCall(f);
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
   %PrepareFunctionForOptimization(g);
   %OptimizeFunctionOnNextCall(g);
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
 })();
 
 // Ensure that arguments in sloppy mode function works
@@ -70,14 +63,14 @@ function assertEqualsArgumentsStrict(a, b) {
   function f() { return g(1, 2, 3); }
 
   %PrepareFunctionForOptimization(f);
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
   %OptimizeFunctionOnNextCall(f);
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
   %PrepareFunctionForOptimization(g);
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
   %OptimizeFunctionOnNextCall(g);
-  assertEqualsArgumentsStrict(g(1, 2, 3), f());
+  assertEquals(g(1, 2, 3), f());
 })();
 
 // Ensure that `Function.arguments` accessor does the

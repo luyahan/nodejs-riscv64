@@ -487,13 +487,14 @@ void Compactor::InitializeIfShouldCompact(
   is_cancelled_ = false;
 }
 
-void Compactor::CancelIfShouldNotCompact(
+bool Compactor::CancelIfShouldNotCompact(
     GarbageCollector::Config::MarkingType marking_type,
     GarbageCollector::Config::StackState stack_state) {
-  if (!is_enabled_ || ShouldCompact(marking_type, stack_state)) return;
+  if (!is_enabled_ || ShouldCompact(marking_type, stack_state)) return false;
 
   is_cancelled_ = true;
   is_enabled_ = false;
+  return true;
 }
 
 Compactor::CompactableSpaceHandling Compactor::CompactSpacesIfEnabled() {

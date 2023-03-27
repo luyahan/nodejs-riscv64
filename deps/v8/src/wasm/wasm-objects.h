@@ -176,9 +176,12 @@ class WasmTableObject
  public:
   inline wasm::ValueType type();
 
+  enum ValueRepr { kJS, kWasm };
+
   V8_EXPORT_PRIVATE static int Grow(Isolate* isolate,
                                     Handle<WasmTableObject> table,
-                                    uint32_t count, Handle<Object> init_value);
+                                    uint32_t count, Handle<Object> init_value,
+                                    ValueRepr entry_repr);
 
   V8_EXPORT_PRIVATE static Handle<WasmTableObject> New(
       Isolate* isolate, Handle<WasmInstanceObject> instance,
@@ -193,21 +196,18 @@ class WasmTableObject
   static bool IsInBounds(Isolate* isolate, Handle<WasmTableObject> table,
                          uint32_t entry_index);
 
-  // Thin wrapper around {JsToWasmObject}.
-  static MaybeHandle<Object> JSToWasmElement(Isolate* isolate,
-                                             Handle<WasmTableObject> table,
-                                             Handle<Object> entry,
-                                             const char** error_message);
+  static bool IsValidElement(Isolate* isolate, Handle<WasmTableObject> table,
+                             Handle<Object> entry);
 
-  // This function will not handle JS objects; i.e., {entry} needs to be in wasm
-  // representation.
   V8_EXPORT_PRIVATE static void Set(Isolate* isolate,
                                     Handle<WasmTableObject> table,
-                                    uint32_t index, Handle<Object> entry);
+                                    uint32_t index, Handle<Object> entry,
+                                    ValueRepr entry_repr);
 
   V8_EXPORT_PRIVATE static Handle<Object> Get(Isolate* isolate,
                                               Handle<WasmTableObject> table,
-                                              uint32_t index);
+                                              uint32_t index,
+                                              ValueRepr as_repr);
 
   V8_EXPORT_PRIVATE static void Fill(Isolate* isolate,
                                      Handle<WasmTableObject> table,
@@ -249,7 +249,7 @@ class WasmTableObject
   static void SetFunctionTableEntry(Isolate* isolate,
                                     Handle<WasmTableObject> table,
                                     Handle<FixedArray> entries, int entry_index,
-                                    Handle<Object> entry);
+                                    Handle<Object> entry, ValueRepr entry_repr);
 
   TQ_OBJECT_CONSTRUCTORS(WasmTableObject)
 };
@@ -314,8 +314,9 @@ class WasmGlobalObject
   inline void SetI64(int64_t value);
   inline void SetF32(float value);
   inline void SetF64(double value);
-  // {value} must be an object in Wasm representation.
-  inline void SetRef(Handle<Object> value);
+  inline void SetExternRef(Handle<Object> value);
+  inline bool SetFuncRef(Isolate* isolate, Handle<Object> value);
+  inline void SetStringRef(Handle<Object> value);
 
  private:
   // This function returns the address of the global's data in the
@@ -1031,11 +1032,9 @@ class WasmContinuationObject
  public:
   static Handle<WasmContinuationObject> New(
       Isolate* isolate, std::unique_ptr<wasm::StackMemory> stack,
-      wasm::JumpBuffer::StackState state,
       AllocationType allocation_type = AllocationType::kYoung);
   static Handle<WasmContinuationObject> New(
-      Isolate* isolate, wasm::JumpBuffer::StackState state,
-      Handle<WasmContinuationObject> parent);
+      Isolate* isolate, Handle<WasmContinuationObject> parent);
 
   DECL_EXTERNAL_POINTER_ACCESSORS(jmpbuf, Address)
 
@@ -1046,7 +1045,7 @@ class WasmContinuationObject
  private:
   static Handle<WasmContinuationObject> New(
       Isolate* isolate, std::unique_ptr<wasm::StackMemory> stack,
-      wasm::JumpBuffer::StackState state, Handle<HeapObject> parent,
+      Handle<HeapObject> parent,
       AllocationType allocation_type = AllocationType::kYoung);
 
   TQ_OBJECT_CONSTRUCTORS(WasmContinuationObject)
@@ -1067,12 +1066,10 @@ class WasmSuspenderObject
 #undef DECL_OPTIONAL_ACCESSORS
 
 namespace wasm {
-// Takes a {value} in the JS representation and typechecks it according to
-// {expected}. If the typecheck succeeds, returns the wasm representation of the
-// object; otherwise, returns the empty handle.
-MaybeHandle<Object> JSToWasmObject(Isolate* isolate, const WasmModule* module,
-                                   Handle<Object> value, ValueType expected,
-                                   const char** error_message);
+bool TypecheckJSObject(Isolate* isolate, const WasmModule* module,
+                       Handle<Object> value, ValueType expected,
+                       const char** error_message);
+bool TryUnpackObjectWrapper(Isolate* isolate, Handle<Object>& in_out_value);
 }  // namespace wasm
 
 }  // namespace internal

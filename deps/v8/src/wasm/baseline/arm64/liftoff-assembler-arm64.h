@@ -5,6 +5,7 @@
 #ifndef V8_WASM_BASELINE_ARM64_LIFTOFF_ASSEMBLER_ARM64_H_
 #define V8_WASM_BASELINE_ARM64_LIFTOFF_ASSEMBLER_ARM64_H_
 
+#include "src/base/platform/wrappers.h"
 #include "src/base/v8-fallthrough.h"
 #include "src/heap/memory-chunk.h"
 #include "src/wasm/baseline/liftoff-assembler.h"
@@ -1031,11 +1032,6 @@ void LiftoffAssembler::FillStackSlotsWithZero(int start, int size) {
     str(wzr, MemOperand(address_reg, kSystemPointerSize / 2, PostIndex));
     cbnz(count_reg, &loop);
   }
-}
-
-void LiftoffAssembler::LoadSpillAddress(Register dst, int offset,
-                                        ValueKind /* kind */) {
-  Sub(dst, fp, offset);
 }
 
 #define I32_BINOP(name, instruction)                             \

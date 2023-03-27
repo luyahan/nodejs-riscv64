@@ -24,14 +24,6 @@
   'WeakMapsTest.Shrinking': [FAIL],
 
   'WeakSetsTest.WeakSet_Shrinking': [FAIL],
-
-  # This tests only that the preparser and parser agree, so there is no point in
-  # running several variants. Note that this still takes ages, because there
-  # are actually 13 * 38 * 5 * 128 = 316160 individual tests hidden here.
-  'ParsingTest.ParserSync': [PASS, NO_VARIANTS],
-
-  # Slow tests.
-  'ParsingTest.ObjectRestNegativeTestSlow': [PASS, ['mode == debug', SKIP]],
 }],  # ALWAYS
 
 ##############################################################################
@@ -101,12 +93,6 @@
   # https://crbug.com/v8/8766
   'BytecodeGeneratorTest.WideRegisters': [SKIP],
 }],  # arch == ppc64
-
-##############################################################################
-['arch == mips64el', {
-  # TODO(mips-team): mips64 do not allocate odd register in liftoff.
-  'WasmRegisterTest.SpreadSetBitsToAdjacentFpRegs': [SKIP],
-}],  # 'arch == mips64'
 
 ##############################################################################
 ['system == windows and asan', {
@@ -270,7 +256,7 @@
 ['lite_mode or variant == jitless', {
 
   # Tests that generate code at runtime.
-  'CodePagesTest.*': [SKIP],
+  'CodeGenTest/*': [SKIP],
   'MacroAssemblerX64Test.EmbeddedObj': [SKIP],
   'RegExpTest.MacroAssemblernativeAtStart': [SKIP],
   'RegExpTest.MacroAssemblerNativeBackReferenceLATIN1': [SKIP],
@@ -284,17 +270,19 @@
   'RegExpTest.MacroAssemblerNativeSuccess': [SKIP],
   'RegExpTest.MacroAssemblerStackOverflow': [SKIP],
   'RegExpTest.Graph': [SKIP],
-  'SloppyEqualityTest.*' : [SKIP],
+  'SloppyEqualityTest/*' : [SKIP],
   'DisasmX64Test.*': [SKIP],
   'RunJSBranchesTest.*': [SKIP],
   'RunJSCallsTest.*': [SKIP],
   'RunJSExceptionsTest.*': [SKIP],
   'RunJSObjectsTest.*': [SKIP],
   'RunJSOpsTest.*': [SKIP],
-  'RunTailCallsTest.*': [SKIP],
 
   # Tests generated irregexp code.
   'RegExpTestWithContext.RegExpInterruptReentrantExecution': [SKIP],
+
+  # Tests that generate code at runtime.
+  'CodePagesTest.*': [SKIP],
 }], # lite_mode or variant == jitless
 
 ##############################################################################
@@ -315,12 +303,17 @@
   'DtoaTest.*': [SKIP],
   'DeclsTest.*': [SKIP],
   'GlobalHandlesTest.*': [SKIP],
-  'ParsingTest/*': [SKIP],
 }],  # variant == no_wasm_traps
 
 ##############################################################################
 ['no_i18n == True', {
   'RegExpTestWithContext.UnicodePropertyEscapeCodeSize': [SKIP],
 }],  # no_i18n == True
+
+##############################################################################
+['variant == nooptimization', {
+  # %ObserveNode tests rely on TurboFan.
+  'SloppyEqualityTest/*' : [SKIP],
+}],  # variant == nooptimization
 
 ]

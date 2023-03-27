@@ -219,13 +219,12 @@ V8_NOINLINE V8_EXPORT_PRIVATE bool IsHeapSubtypeOfImpl(
       return super_heap == HeapType::kArray || super_heap == HeapType::kData ||
              super_heap == HeapType::kEq || super_heap == HeapType::kAny;
     case HeapType::kString:
-      // stringref is a subtype of anyref under wasm-gc.
-      return sub_heap == super_heap ||
-             (v8_flags.experimental_wasm_gc && super_heap == HeapType::kAny);
     case HeapType::kStringViewWtf8:
     case HeapType::kStringViewWtf16:
     case HeapType::kStringViewIter:
-      return sub_heap == super_heap;
+      // stringref is a subtype of anyref (aka externref) under wasm-gc.
+      return sub_heap == super_heap ||
+             (v8_flags.experimental_wasm_gc && super_heap == HeapType::kAny);
     case HeapType::kBottom:
       UNREACHABLE();
     case HeapType::kNone:
@@ -479,9 +478,6 @@ HeapType::Representation CommonAncestorWithGeneric(HeapType heap1,
                                                          : HeapType::kNoExtern;
     case HeapType::kExtern:
       return HeapType::kExtern;
-    case HeapType::kString:
-    case HeapType::kStringViewIter:
-      return heap1 == heap2 ? heap1.representation() : HeapType::kBottom;
     default:
       UNREACHABLE();
   }

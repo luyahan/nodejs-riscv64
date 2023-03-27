@@ -111,7 +111,6 @@ class WasmInliner final : public AdvancedReducer {
                       LexicographicOrdering>
       inlining_candidates_;
   std::unordered_set<Node*> seen_;
-  std::unordered_map<uint32_t, int> function_inlining_count_;
 };
 
 }  // namespace compiler

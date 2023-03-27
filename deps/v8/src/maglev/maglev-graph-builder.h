@@ -20,7 +20,6 @@
 #include "src/interpreter/bytecode-array-iterator.h"
 #include "src/interpreter/bytecode-decoder.h"
 #include "src/interpreter/bytecode-register.h"
-#include "src/interpreter/bytecodes.h"
 #include "src/interpreter/interpreter-intrinsics.h"
 #include "src/maglev/maglev-graph-labeller.h"
 #include "src/maglev/maglev-graph-printer.h"
@@ -44,24 +43,18 @@ class MaglevGraphBuilder {
 
     StartPrologue();
     for (int i = 0; i < parameter_count(); i++) {
-      // TODO(v8:7700): Consider creating InitialValue nodes lazily.
-      InitialValue* v = AddNewNode<InitialValue>(
-          {}, interpreter::Register::FromParameterIndex(i));
-      DCHECK_EQ(graph()->parameters().size(), static_cast<size_t>(i));
-      graph()->parameters().push_back(v);
-      SetArgument(i, v);
+      SetArgument(i, AddNewNode<InitialValue>(
+                         {}, interpreter::Register::FromParameterIndex(i)));
     }
     BuildRegisterFrameInitialization();
-    BuildMergeStates();
     EndPrologue();
     BuildBody();
   }
 
   void StartPrologue();
   void SetArgument(int i, ValueNode* value);
-  ValueNode* GetTaggedArgument(int i);
+  ValueNode* GetArgument(int i) const;
   void BuildRegisterFrameInitialization();
-  void BuildMergeStates();
   BasicBlock* EndPrologue();
 
   void BuildBody() {
@@ -81,30 +74,6 @@ class MaglevGraphBuilder {
     return result;
   }
 
-  void ProcessMergePointAtExceptionHandlerStart(int offset) {
-    MergePointInterpreterFrameState& merge_state = *merge_states_[offset];
-    DCHECK_EQ(merge_state.predecessor_count(), 0);
-
-    // Copy state.
-    current_interpreter_frame_.CopyFrom(*compilation_unit_, merge_state);
-
-    // Merges aren't simple fallthroughs, so we should reset the checkpoint
-    // validity.
-    latest_checkpointed_state_.reset();
-
-    // Register exception phis.
-    if (has_graph_labeller()) {
-      for (Phi* phi : *merge_states_[offset]->phis()) {
-        graph_labeller()->RegisterNode(phi);
-        if (FLAG_trace_maglev_graph_building) {
-          std::cout << "  " << phi << "  "
-                    << PrintNodeLabel(graph_labeller(), phi) << ": "
-                    << PrintNode(graph_labeller(), phi) << std::endl;
-        }
-      }
-    }
-  }
-
   void ProcessMergePoint(int offset) {
     // First copy the merge state to be the current state.
     MergePointInterpreterFrameState& merge_state = *merge_states_[offset];
@@ -118,11 +87,10 @@ class MaglevGraphBuilder {
 
     // Set up edge-split.
     int predecessor_index = merge_state.predecessor_count() - 1;
-    if (merge_state.is_loop()) {
+    if (merge_state.is_unmerged_loop()) {
       // For loops, the JumpLoop block hasn't been generated yet, and so isn't
       // in the list of jump targets. IT's the last predecessor, so drop the
       // index by one.
-      DCHECK(merge_state.is_unmerged_loop());
       predecessor_index--;
     }
     BasicBlockRef* old_jump_targets = jump_targets_[offset].Reset();
@@ -162,6 +130,17 @@ class MaglevGraphBuilder {
     return merge_states_[offset] != nullptr;
   }
 
+  // Return true if current offset is the beginning of a catch block, that
+  // is, it is the offset handler in the exception handler table in the
+  // bytecode array.
+  bool IsHandlerOffset(int offset) const {
+    HandlerTable table(*bytecode().object());
+    for (int i = 0; i < table.NumberOfRangeEntries(); i++) {
+      if (offset == table.GetRangeHandler(i)) return true;
+    }
+    return false;
+  }
+
   // Called when a block is killed by an unconditional eager deopt.
   void EmitUnconditionalDeopt(DeoptimizeReason reason) {
     // Create a block rather than calling finish, since we don't yet know the
@@ -174,13 +153,6 @@ class MaglevGraphBuilder {
 
   void MarkBytecodeDead() {
     DCHECK_NULL(current_block_);
-    if (FLAG_trace_maglev_graph_building) {
-      std::cout << "== Dead ==\n"
-                << std::setw(4) << iterator_.current_offset() << " : ";
-      interpreter::BytecodeDecoder::Decode(std::cout,
-                                           iterator_.current_address());
-      std::cout << std::endl;
-    }
 
     // If the current bytecode is a jump to elsewhere, then this jump is
     // also dead and we should make sure to merge it as a dead predecessor.
@@ -207,31 +179,6 @@ class MaglevGraphBuilder {
       // Any other bytecode that doesn't return or throw will merge into the
       // fallthrough.
       MergeDeadIntoFrameState(iterator_.next_offset());
-    } else if (bytecode == interpreter::Bytecode::kSuspendGenerator) {
-      // Extra special case for SuspendGenerator, if the suspend is dead then
-      // the resume has to be dead too. However, the resume already has a merge
-      // state, with exactly one predecessor (the generator switch), so it will
-      // be revived along the standard path. This can cause havoc if e.g. the
-      // suspend/resume are inside a dead loop, because the JumpLoop can become
-      // live again.
-      //
-      // So, manually advance the iterator to the resume, go through the motions
-      // of processing the merge state, but immediately emit an unconditional
-      // deopt (which also kills the resume).
-      iterator_.Advance();
-      DCHECK_EQ(iterator_.current_bytecode(),
-                interpreter::Bytecode::kResumeGenerator);
-      int resume_offset = iterator_.current_offset();
-      DCHECK_EQ(NumPredecessors(resume_offset), 1);
-      ProcessMergePoint(resume_offset);
-      StartNewBlock(resume_offset);
-      // TODO(v8:7700): This approach is not ideal. We can create a deopt-reopt
-      // loop: the interpreted code runs, creates a generator while feedback is
-      // still not yet allocated, then suspends the generator, tiers up to
-      // maglev, and reaches this deopt. We then deopt, but since the generator
-      // is never created again, we re-opt without the suspend part and we loop!
-      EmitUnconditionalDeopt(DeoptimizeReason::kSuspendGeneratorIsDead);
-      return;
     }
 
     // TODO(leszeks): We could now continue iterating the bytecode
@@ -251,26 +198,24 @@ class MaglevGraphBuilder {
                            graph()->last_block(), offset);
       }
       if (FLAG_trace_maglev_graph_building) {
-        auto detail = merge_state->is_exception_handler() ? "exception handler"
-                      : merge_state->is_loop()            ? "loop header"
-                                                          : "merge";
-        std::cout << "== New block (" << detail << ") ==" << std::endl;
+        std::cout << "== New block (merge) ==" << std::endl;
       }
 
-      if (merge_state->is_exception_handler()) {
-        DCHECK_EQ(predecessors_[offset], 0);
-        // If we have no reference to this block, then the exception handler is
-        // dead.
-        if (!jump_targets_[offset].has_ref()) {
-          MarkBytecodeDead();
-          return;
-        }
-        ProcessMergePointAtExceptionHandlerStart(offset);
-      } else {
-        ProcessMergePoint(offset);
-      }
-
+      ProcessMergePoint(offset);
       StartNewBlock(offset);
+      // If we have no predecessor, then we can be the start of an exception
+      // handler block.
+    } else if (predecessors_[offset] == 0 && IsHandlerOffset(offset)) {
+      // If we have no reference to this block, then the exception handler is
+      // dead.
+      if (!jump_targets_[offset].has_ref()) {
+        MarkBytecodeDead();
+        return;
+      }
+      StartNewBlock(offset);
+#ifdef DEBUG
+      current_block_->set_is_exception_handler_block(true);
+#endif  // DEBUG
     } else if (V8_UNLIKELY(current_block_ == nullptr)) {
       // If we don't have a current block, the bytecode must be dead (because of
       // some earlier deopt). Mark this bytecode dead too and return.
@@ -395,13 +340,10 @@ class MaglevGraphBuilder {
     if constexpr (NodeT::kProperties.can_throw()) {
       if (catch_block_stack_.size() > 0) {
         // Inside a try-block.
-        int handler_offset = catch_block_stack_.top().handler;
-        new (node->exception_handler_info())
-            ExceptionHandlerInfo(&jump_targets_[handler_offset]);
+        new (node->exception_handler_info()) ExceptionHandlerInfo(
+            &jump_targets_[catch_block_stack_.top().handler]);
       } else {
         // Patch no exception handler marker.
-        // TODO(victorgomes): Avoid allocating exception handler data in this
-        // case.
         new (node->exception_handler_info()) ExceptionHandlerInfo();
       }
     }
@@ -471,24 +413,6 @@ class MaglevGraphBuilder {
     MarkBytecodeDead();
   }
 
-  void Print(const char* str) {
-    Handle<String> string_handle =
-        local_isolate()->factory()->NewStringFromAsciiChecked(
-            str, AllocationType::kOld);
-    ValueNode* string_node = GetConstant(MakeRefAssumeMemoryFence(
-        broker(), broker()->CanonicalPersistentHandle(string_handle)));
-    BuildCallRuntime(Runtime::kGlobalPrint, {string_node});
-  }
-
-  void Print(ValueNode* value) {
-    BuildCallRuntime(Runtime::kDebugPrint, {value});
-  }
-
-  void Print(const char* str, ValueNode* value) {
-    Print(str);
-    Print(value);
-  }
-
   ValueNode* GetClosure() const {
     return current_interpreter_frame_.get(
         interpreter::Register::function_closure());
@@ -508,12 +432,8 @@ class MaglevGraphBuilder {
     return iterator_.GetSlotOperand(operand_index);
   }
 
-  uint32_t GetFlag8Operand(int operand_index) const {
-    return iterator_.GetFlag8Operand(operand_index);
-  }
-
-  uint32_t GetFlag16Operand(int operand_index) const {
-    return iterator_.GetFlag16Operand(operand_index);
+  uint32_t GetFlagOperand(int operand_index) const {
+    return iterator_.GetFlagOperand(operand_index);
   }
 
   template <class T, typename = std::enable_if_t<
@@ -586,16 +506,12 @@ class MaglevGraphBuilder {
   ValueNode* GetConstant(const compiler::ObjectRef& ref) {
     if (ref.IsSmi()) return GetSmiConstant(ref.AsSmi());
 
-    // TODO(verwaest): Handle roots.
+    // TODO(verwaest): Cache and handle roots.
     const compiler::HeapObjectRef& constant = ref.AsHeapObject();
-    auto it = graph_->constants().find(constant);
-    if (it == graph_->constants().end()) {
-      Constant* node = CreateNewNode<Constant>(0, constant);
-      if (has_graph_labeller()) graph_labeller()->RegisterNode(node);
-      graph_->constants().emplace(constant, node);
-      return node;
-    }
-    return it->second;
+    Constant* node = CreateNewNode<Constant>(0, constant);
+    if (has_graph_labeller()) graph_labeller()->RegisterNode(node);
+    graph_->AddConstant(node);
+    return node;
   }
 
   bool IsConstantNodeTheHole(ValueNode* value) {
@@ -793,27 +709,21 @@ class MaglevGraphBuilder {
     if (!IsConstantNode(value->opcode())) {
       DCHECK_NE(0, new_nodes_.count(value));
     }
-    MarkAsLazyDeoptResult(value, target, 1);
+    MarkAsLazyDeoptResult(value, target);
     current_interpreter_frame_.set(target, value);
   }
 
-  template <typename NodeT>
-  void StoreRegisterPair(
-      std::pair<interpreter::Register, interpreter::Register> target,
-      NodeT* value) {
-    const interpreter::Register target0 = target.first;
-    const interpreter::Register target1 = target.second;
-
-    DCHECK_EQ(interpreter::Register(target0.index() + 1), target1);
+  void StoreRegisterPair(interpreter::Register target, CallRuntime* value) {
     DCHECK_EQ(value->ReturnCount(), 2);
 
     DCHECK_NE(0, new_nodes_.count(value));
-    MarkAsLazyDeoptResult(value, target0, value->ReturnCount());
-    current_interpreter_frame_.set(target0, value);
+    MarkAsLazyDeoptResult(value, target, value->ReturnCount());
+    current_interpreter_frame_.set(target, value);
 
     ValueNode* second_value = GetSecondValue(value);
     DCHECK_NE(0, new_nodes_.count(second_value));
-    current_interpreter_frame_.set(target1, second_value);
+    current_interpreter_frame_.set(interpreter::Register(target.index() + 1),
+                                   second_value);
   }
 
   CheckpointedInterpreterState GetLatestCheckpointedState() {
@@ -844,7 +754,7 @@ class MaglevGraphBuilder {
   template <typename NodeT>
   void MarkAsLazyDeoptResult(NodeT* value,
                              interpreter::Register result_location,
-                             int result_size) {
+                             int result_size = 1) {
     DCHECK_EQ(NodeT::kProperties.can_lazy_deopt(),
               value->properties().can_lazy_deopt());
     if constexpr (NodeT::kProperties.can_lazy_deopt()) {
@@ -858,13 +768,6 @@ class MaglevGraphBuilder {
   void MarkPossibleSideEffect() {
     // If there was a potential side effect, invalidate the previous checkpoint.
     latest_checkpointed_state_.reset();
-
-    // A side effect could change existing objects' maps. For stable maps we
-    // know this hasn't happened (because we added a dependency on the maps
-    // staying stable and therefore not possible to transition away from), but
-    // we can no longer assume that objects with unstable maps still have the
-    // same map.
-    known_node_aspects().unstable_maps.clear();
   }
 
   int next_offset() const {
@@ -962,32 +865,16 @@ class MaglevGraphBuilder {
   bool TryBuildPropertyCellAccess(
       const compiler::GlobalAccessFeedback& global_access_feedback);
 
-  void BuildCheckSmi(ValueNode* object);
-  void BuildCheckHeapObject(ValueNode* object);
-  void BuildCheckString(ValueNode* object);
-  void BuildCheckSymbol(ValueNode* object);
   void BuildMapCheck(ValueNode* object, const compiler::MapRef& map);
 
-  bool TryBuildMonomorphicLoad(ValueNode* receiver,
-                               ValueNode* lookup_start_object,
-                               const compiler::MapRef& map,
+  bool TryBuildMonomorphicLoad(ValueNode* object, const compiler::MapRef& map,
                                MaybeObjectHandle handler);
-  bool TryBuildMonomorphicLoadFromSmiHandler(ValueNode* receiver,
-                                             ValueNode* lookup_start_object,
+  bool TryBuildMonomorphicLoadFromSmiHandler(ValueNode* object,
                                              const compiler::MapRef& map,
                                              int32_t handler);
-  bool TryBuildMonomorphicLoadFromLoadHandler(ValueNode* receiver,
-                                              ValueNode* lookup_start_object,
+  bool TryBuildMonomorphicLoadFromLoadHandler(ValueNode* object,
                                               const compiler::MapRef& map,
                                               LoadHandler handler);
-
-  bool TryBuildMonomorphicElementLoad(ValueNode* object, ValueNode* index,
-                                      const compiler::MapRef& map,
-                                      MaybeObjectHandle handler);
-  bool TryBuildMonomorphicElementLoadFromSmiHandler(ValueNode* object,
-                                                    ValueNode* index,
-                                                    const compiler::MapRef& map,
-                                                    int32_t handler);
 
   bool TryBuildMonomorphicStore(ValueNode* object, const compiler::MapRef& map,
                                 MaybeObjectHandle handler);
@@ -1112,9 +999,6 @@ class MaglevGraphBuilder {
   }
   MaglevGraphLabeller* graph_labeller() const {
     return compilation_unit_->graph_labeller();
-  }
-  KnownNodeAspects& known_node_aspects() {
-    return current_interpreter_frame_.known_node_aspects();
   }
 
   // True when this graph builder is building the subgraph of an inlined

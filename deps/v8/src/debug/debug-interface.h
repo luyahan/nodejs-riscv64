@@ -733,8 +733,6 @@ MaybeLocal<Message> GetMessageFromPromise(Local<Promise> promise);
 
 bool isExperimentalAsyncStackTaggingApiEnabled();
 
-void RecordAsyncStackTaggingCreateTaskCall(v8::Isolate* isolate);
-
 }  // namespace debug
 }  // namespace v8
 

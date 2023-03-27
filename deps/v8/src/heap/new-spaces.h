@@ -298,8 +298,7 @@ class NewSpace : NON_EXPORTED_BASE(public SpaceWithLinearArea) {
   // |address|. |address| should be a valid limit on |page| (see
   // BasicMemoryChunk::ContainsLimit).
   void VerifyImpl(Isolate* isolate, const Page* current_page,
-                  Address current_address,
-                  Address stop_iteration_at_address) const;
+                  Address current_address) const;
 #endif
 
 #ifdef V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
@@ -351,7 +350,7 @@ class NewSpace : NON_EXPORTED_BASE(public SpaceWithLinearArea) {
 class V8_EXPORT_PRIVATE SemiSpaceNewSpace final : public NewSpace {
  public:
   static SemiSpaceNewSpace* From(NewSpace* space) {
-    DCHECK(!v8_flags.minor_mc);
+    DCHECK(!FLAG_minor_mc);
     return static_cast<SemiSpaceNewSpace*>(space);
   }
 
@@ -585,7 +584,7 @@ class V8_EXPORT_PRIVATE PagedSpaceForNewSpace final : public PagedSpaceBase {
   }
 
   // Reset the allocation pointer.
-  void EvacuatePrologue() {}
+  void EvacuatePrologue();
   void EvacuateEpilogue() { allocated_linear_areas_ = 0; }
 
   // When inline allocation stepping is active, either because of incremental
@@ -646,7 +645,7 @@ class V8_EXPORT_PRIVATE PagedSpaceForNewSpace final : public PagedSpaceBase {
 class V8_EXPORT_PRIVATE PagedNewSpace final : public NewSpace {
  public:
   static PagedNewSpace* From(NewSpace* space) {
-    DCHECK(v8_flags.minor_mc);
+    DCHECK(FLAG_minor_mc);
     return static_cast<PagedNewSpace*>(space);
   }
 
@@ -764,7 +763,7 @@ class V8_EXPORT_PRIVATE PagedNewSpace final : public NewSpace {
     return paged_space_.GetObjectIterator(heap);
   }
 
-  bool ShouldBePromoted(Address address) const final { return true; }
+  bool ShouldBePromoted(Address address) const final { return false; }
 
   void EvacuatePrologue() final { paged_space_.EvacuatePrologue(); }
   void EvacuateEpilogue() final { paged_space_.EvacuateEpilogue(); }

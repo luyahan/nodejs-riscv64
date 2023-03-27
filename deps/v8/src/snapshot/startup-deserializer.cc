@@ -74,7 +74,7 @@ void StartupDeserializer::DeserializeIntoIsolate() {
 }
 
 void StartupDeserializer::LogNewMapEvents() {
-  if (v8_flags.log_maps) LOG(isolate(), LogAllMaps());
+  if (FLAG_log_maps) LOG(isolate(), LogAllMaps());
 }
 
 void StartupDeserializer::FlushICache() {

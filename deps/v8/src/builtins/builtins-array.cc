@@ -7,6 +7,7 @@
 #include "src/builtins/builtins.h"
 #include "src/codegen/code-factory.h"
 #include "src/common/assert-scope.h"
+#include "src/common/globals.h"
 #include "src/debug/debug.h"
 #include "src/execution/isolate.h"
 #include "src/execution/protectors-inl.h"
@@ -603,7 +604,8 @@ BUILTIN(ArrayShift) {
     return ReadOnlyRoots(isolate).undefined_value();
   }
 
-  if (CanUseFastArrayShift(isolate, receiver)) {
+  if (!V8_COMPRESS_POINTERS_8GB_BOOL &&
+      CanUseFastArrayShift(isolate, receiver)) {
     Handle<JSArray> array = Handle<JSArray>::cast(receiver);
     RETURN_RESULT_OR_FAILURE(isolate,
                              array->GetElementsAccessor()->Shift(array));
@@ -753,13 +755,9 @@ class ArrayConcatVisitor {
         isolate_->factory()->NewNumber(static_cast<double>(index_offset_));
     Handle<Map> map = JSObject::GetElementsTransitionMap(
         array, fast_elements() ? HOLEY_ELEMENTS : DICTIONARY_ELEMENTS);
-    {
-      DisallowGarbageCollection no_gc;
-      auto raw = *array;
-      raw.set_length(*length);
-      raw.set_elements(*storage_fixed_array());
-      raw.set_map(*map, kReleaseStore);
-    }
+    array->set_length(*length);
+    array->set_elements(*storage_fixed_array());
+    array->set_map(*map, kReleaseStore);
     return array;
   }
 

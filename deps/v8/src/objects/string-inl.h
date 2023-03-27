@@ -188,9 +188,9 @@ bool StringShape::IsUncachedExternal() const {
 
 bool StringShape::IsShared() const {
   // TODO(v8:12007): Set is_shared to true on internalized string when
-  // v8_flags.shared_string_table is removed.
+  // FLAG_shared_string_table is removed.
   return (type_ & kSharedStringMask) == kSharedStringTag ||
-         (v8_flags.shared_string_table && IsInternalized());
+         (FLAG_shared_string_table && IsInternalized());
 }
 
 StringRepresentationTag StringShape::representation_tag() const {
@@ -781,7 +781,7 @@ String::FlatContent String::GetFlatContent(
 }
 
 Handle<String> String::Share(Isolate* isolate, Handle<String> string) {
-  DCHECK(v8_flags.shared_string_table);
+  DCHECK(FLAG_shared_string_table);
   MaybeHandle<Map> new_map;
   switch (
       isolate->factory()->ComputeSharingStrategyForString(string, &new_map)) {
@@ -1106,15 +1106,6 @@ void ExternalString::InitExternalPointerFields(Isolate* isolate) {
   if (is_uncached()) return;
   InitExternalPointerField<kExternalStringResourceDataTag>(
       kResourceDataOffset, isolate, kNullAddress);
-}
-
-void ExternalString::VisitExternalPointers(ObjectVisitor* visitor) const {
-  visitor->VisitExternalPointer(*this, RawExternalPointerField(kResourceOffset),
-                                kExternalStringResourceTag);
-  if (is_uncached()) return;
-  visitor->VisitExternalPointer(*this,
-                                RawExternalPointerField(kResourceDataOffset),
-                                kExternalStringResourceDataTag);
 }
 
 DEF_GETTER(ExternalString, resource_as_address, Address) {
@@ -1490,8 +1481,6 @@ bool String::IsInPlaceInternalizable(InstanceType instance_type) {
     case SHARED_ONE_BYTE_STRING_TYPE:
     case EXTERNAL_STRING_TYPE:
     case EXTERNAL_ONE_BYTE_STRING_TYPE:
-    case SHARED_EXTERNAL_STRING_TYPE:
-    case SHARED_EXTERNAL_ONE_BYTE_STRING_TYPE:
       return true;
     default:
       return false;

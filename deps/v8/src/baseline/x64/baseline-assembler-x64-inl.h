@@ -150,7 +150,7 @@ void BaselineAssembler::JumpIfInstanceType(Condition cc, Register map,
                                            InstanceType instance_type,
                                            Label* target,
                                            Label::Distance distance) {
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     __ AssertNotSmi(map);
     __ CmpObjectType(map, MAP_TYPE, kScratchRegister);
     __ Assert(equal, AbortReason::kUnexpectedValue);
@@ -600,7 +600,7 @@ void BaselineAssembler::EmitReturn(MacroAssembler* masm) {
 
       __ LoadContext(kContextRegister);
       __ Push(MemOperand(rbp, InterpreterFrameConstants::kFunctionOffset));
-      __ CallRuntime(Runtime::kBytecodeBudgetInterrupt_Sparkplug, 1);
+      __ CallRuntime(Runtime::kBytecodeBudgetInterrupt, 1);
 
       __ Pop(kInterpreterAccumulatorRegister, params_size);
       __ masm()->SmiUntagUnsigned(params_size);
@@ -639,7 +639,7 @@ void BaselineAssembler::EmitReturn(MacroAssembler* masm) {
 inline void EnsureAccumulatorPreservedScope::AssertEqualToAccumulator(
     Register reg) {
   assembler_->masm()->cmp_tagged(reg, kInterpreterAccumulatorRegister);
-  assembler_->masm()->Assert(equal, AbortReason::kAccumulatorClobbered);
+  assembler_->masm()->Assert(equal, AbortReason::kUnexpectedValue);
 }
 
 }  // namespace baseline

@@ -21,8 +21,20 @@ class HeapInternalsBase {
       v8::internal::NewSpace* space,
       std::vector<Handle<FixedArray>>* out_handles = nullptr);
   void SimulateFullSpace(v8::internal::PagedSpace* space);
-  void FillCurrentPage(v8::internal::NewSpace* space,
+  bool FillCurrentPageButNBytes(
+      v8::internal::NewSpace* space, int extra_bytes,
+      std::vector<Handle<FixedArray>>* out_handles = nullptr);
+  bool FillCurrentPage(v8::internal::NewSpace* space,
                        std::vector<Handle<FixedArray>>* out_handles = nullptr);
+  std::vector<Handle<FixedArray>> CreatePadding(
+      Heap* heap, int padding_size, AllocationType allocation,
+      int object_size = kMaxRegularHeapObjectSize);
+  int FixedArrayLenFromSize(int size);
+
+ private:
+  void SimulateFullSpace(
+      v8::internal::PagedNewSpace* space,
+      std::vector<Handle<FixedArray>>* out_handles = nullptr);
 };
 
 template <typename TMixin>
@@ -73,9 +85,9 @@ class WithHeapInternals : public TMixin, HeapInternalsBase {
 
   void SealCurrentObjects() {
     // If you see this check failing, disable the flag at the start of your
-    // test: v8_flags.stress_concurrent_allocation = false; Background thread
+    // test: FLAG_stress_concurrent_allocation = false; Background thread
     // allocating concurrently interferes with this function.
-    CHECK(!v8_flags.stress_concurrent_allocation);
+    CHECK(!FLAG_stress_concurrent_allocation);
     FullGC();
     FullGC();
     heap()->mark_compact_collector()->EnsureSweepingCompleted(
@@ -145,7 +157,7 @@ inline void YoungGC(v8::Isolate* isolate) {
 
 template <typename GlobalOrPersistent>
 bool InYoungGeneration(v8::Isolate* isolate, const GlobalOrPersistent& global) {
-  CHECK(!v8_flags.single_generation);
+  CHECK(!FLAG_single_generation);
   v8::HandleScope scope(isolate);
   auto tmp = global.Get(isolate);
   return i::Heap::InYoungGeneration(*v8::Utils::OpenHandle(*tmp));

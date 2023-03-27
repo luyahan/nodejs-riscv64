@@ -52,7 +52,7 @@ static void GetSharedFunctionInfoBytecodeOrBaseline(MacroAssembler* masm,
   ASM_CODE_COMMENT(masm);
   Label done;
   __ CompareObjectType(sfi_data, scratch1, scratch1, CODET_TYPE);
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     Label not_baseline;
     __ b(ne, &not_baseline);
     AssertCodeIsBaseline(masm, sfi_data, scratch1);
@@ -142,12 +142,12 @@ void Generate_BaselineOrInterpreterEntry(MacroAssembler* masm,
 
     // Start with baseline code.
     __ bind(&start_with_baseline);
-  } else if (v8_flags.debug_code) {
+  } else if (FLAG_debug_code) {
     __ CompareObjectType(code_obj, r6, r6, CODET_TYPE);
     __ Assert(eq, AbortReason::kExpectedBaselineData);
   }
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     AssertCodeIsBaseline(masm, code_obj, r6);
   }
 
@@ -402,7 +402,7 @@ void OnStackReplacement(MacroAssembler* masm, OsrSourceTier source,
   // OSR entry tracing.
   {
     Label next;
-    __ Move(r4, ExternalReference::address_of_log_or_trace_osr());
+    __ Move(r4, ExternalReference::address_of_FLAG_trace_osr());
     __ LoadU8(r4, MemOperand(r4));
     __ andi(r0, r4, Operand(0xFF));  // Mask to the LSB.
     __ beq(&next, cr0);
@@ -410,7 +410,7 @@ void OnStackReplacement(MacroAssembler* masm, OsrSourceTier source,
     {
       FrameAndConstantPoolScope scope(masm, StackFrame::INTERNAL);
       __ Push(r3);  // Preserve the code object.
-      __ CallRuntime(Runtime::kLogOrTraceOptimizedOSREntry, 0);
+      __ CallRuntime(Runtime::kTraceOptimizedOSREntry, 0);
       __ Pop(r3);
     }
 
@@ -433,7 +433,7 @@ void OnStackReplacement(MacroAssembler* masm, OsrSourceTier source,
     ConstantPoolUnavailableScope constant_pool_unavailable(masm);
     __ addi(r3, r3, Operand(Code::kHeaderSize - kHeapObjectTag));  // Code start
 
-    if (v8_flags.enable_embedded_constant_pool) {
+    if (FLAG_enable_embedded_constant_pool) {
       __ LoadConstantPoolPointerRegisterFromCodeTargetAddress(r3);
     }
 
@@ -722,7 +722,7 @@ void Builtins::Generate_ResumeGeneratorTrampoline(MacroAssembler* masm) {
   }
 
   // Underlying function needs to have bytecode available.
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     Label is_baseline;
     __ LoadTaggedPointerField(
         r6, FieldMemOperand(r7, JSFunction::kSharedFunctionInfoOffset), r0);
@@ -845,7 +845,7 @@ void Generate_JSEntryVariant(MacroAssembler* masm, StackFrame::Type type,
   // r8: argv
   __ li(r0, Operand(-1));  // Push a bad frame pointer to fail if it is used.
   __ push(r0);
-  if (v8_flags.enable_embedded_constant_pool) {
+  if (FLAG_enable_embedded_constant_pool) {
     __ li(kConstantPoolRegister, Operand::Zero());
     __ push(kConstantPoolRegister);
   }
@@ -1205,11 +1205,12 @@ void Builtins::Generate_BaselineOutOfLinePrologue(MacroAssembler* masm) {
   __ AssertFeedbackVector(feedback_vector, r11);
 
   // Check for an tiering state.
-  Label flags_need_processing;
-  Register flags = r10;
+  Label has_optimized_code_or_state;
+  Register optimization_state = r10;
   {
-    __ LoadFeedbackVectorFlagsAndJumpIfNeedsProcessing(
-        flags, feedback_vector, CodeKind::BASELINE, &flags_need_processing);
+    __ LoadTieringStateAndJumpIfNeedsProcessing(
+        optimization_state, feedback_vector, CodeKind::BASELINE,
+        &has_optimized_code_or_state);
   }
 
   { ResetFeedbackVectorOsrUrgency(masm, feedback_vector, r11, r0); }
@@ -1255,7 +1256,7 @@ void Builtins::Generate_BaselineOutOfLinePrologue(MacroAssembler* masm) {
 
     // Baseline code frames store the feedback vector where interpreter would
     // store the bytecode offset.
-    if (v8_flags.debug_code) {
+    if (FLAG_debug_code) {
       Register scratch = r11;
       __ CompareObjectType(feedback_vector, scratch, scratch,
                            FEEDBACK_VECTOR_TYPE);
@@ -1287,18 +1288,19 @@ void Builtins::Generate_BaselineOutOfLinePrologue(MacroAssembler* masm) {
   __ LoadRoot(kInterpreterAccumulatorRegister, RootIndex::kUndefinedValue);
   __ Ret();
 
-  __ bind(&flags_need_processing);
+  __ bind(&has_optimized_code_or_state);
   {
     ASM_CODE_COMMENT_STRING(masm, "Optimized marker check");
 
     // Drop the frame created by the baseline call.
-    if (v8_flags.enable_embedded_constant_pool) {
+    if (FLAG_enable_embedded_constant_pool) {
       __ Pop(r0, fp, kConstantPoolRegister);
     } else {
       __ Pop(r0, fp);
     }
     __ mtlr(r0);
-    __ MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(flags, feedback_vector);
+    __ MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(optimization_state,
+                                                    feedback_vector);
     __ Trap();
   }
 
@@ -1318,26 +1320,6 @@ void Builtins::Generate_BaselineOutOfLinePrologue(MacroAssembler* masm) {
   __ Ret();
 }
 #endif
-
-// static
-void Builtins::Generate_BaselineOutOfLinePrologueDeopt(MacroAssembler* masm) {
-  // We're here because we got deopted during BaselineOutOfLinePrologue's stack
-  // check. Undo all its frame creation and call into the interpreter instead.
-
-  // Drop bytecode offset (was the feedback vector but got replaced during
-  // deopt) and bytecode array.
-  __ Drop(2);
-
-  // Context, closure, argc.
-  __ Pop(kContextRegister, kJavaScriptCallTargetRegister,
-         kJavaScriptCallArgCountRegister);
-
-  // Drop frame pointer
-  __ LeaveFrame(StackFrame::BASELINE);
-
-  // Enter the interpreter.
-  __ TailCallBuiltin(Builtin::kInterpreterEntryTrampoline);
-}
 
 // Generate code for entering a JS function with the interpreter.
 // On entry to the function the receiver and arguments have been pushed on the
@@ -1397,11 +1379,11 @@ void Builtins::Generate_InterpreterEntryTrampoline(
   __ cmpi(r7, Operand(FEEDBACK_VECTOR_TYPE));
   __ bne(&push_stack_frame);
 
-  Register flags = r7;
-  Label flags_need_processing;
-  __ LoadFeedbackVectorFlagsAndJumpIfNeedsProcessing(
-      flags, feedback_vector, CodeKind::INTERPRETED_FUNCTION,
-      &flags_need_processing);
+  Register optimization_state = r7;
+  Label has_optimized_code_or_state;
+  __ LoadTieringStateAndJumpIfNeedsProcessing(
+      optimization_state, feedback_vector, CodeKind::INTERPRETED_FUNCTION,
+      &has_optimized_code_or_state);
 
   {
     UseScratchRegisterScope temps(masm);
@@ -1567,8 +1549,9 @@ void Builtins::Generate_InterpreterEntryTrampoline(
 
   __ jmp(&after_stack_check_interrupt);
 
-  __ bind(&flags_need_processing);
-  __ MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(flags, feedback_vector);
+  __ bind(&has_optimized_code_or_state);
+  __ MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(optimization_state,
+                                                  feedback_vector);
 
   __ bind(&is_baseline);
   {
@@ -1590,8 +1573,9 @@ void Builtins::Generate_InterpreterEntryTrampoline(
     __ b(ne, &install_baseline_code);
 
     // Check for an tiering state.
-    __ LoadFeedbackVectorFlagsAndJumpIfNeedsProcessing(
-        flags, feedback_vector, CodeKind::BASELINE, &flags_need_processing);
+    __ LoadTieringStateAndJumpIfNeedsProcessing(
+        optimization_state, feedback_vector, CodeKind::BASELINE,
+        &has_optimized_code_or_state);
 
     // Load the baseline code into the closure.
     __ mr(r5, kInterpreterBytecodeArrayRegister);
@@ -1791,7 +1775,7 @@ static void Generate_InterpreterEnterBytecode(MacroAssembler* masm) {
   __ LoadU64(kInterpreterBytecodeArrayRegister,
              MemOperand(fp, InterpreterFrameConstants::kBytecodeArrayFromFp));
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     // Check function data field is actually a BytecodeArray object.
     __ TestIfSmi(kInterpreterBytecodeArrayRegister, r0);
     __ Assert(ne,
@@ -1808,7 +1792,7 @@ static void Generate_InterpreterEnterBytecode(MacroAssembler* masm) {
              MemOperand(fp, InterpreterFrameConstants::kBytecodeOffsetFromFp));
   __ SmiUntag(kInterpreterBytecodeOffsetRegister);
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     Label okay;
     __ cmpi(kInterpreterBytecodeOffsetRegister,
             Operand(BytecodeArray::kHeaderSize - kHeapObjectTag +
@@ -1967,7 +1951,7 @@ void Builtins::Generate_NotifyDeoptimized(MacroAssembler* masm) {
 }
 
 void Builtins::Generate_InterpreterOnStackReplacement(MacroAssembler* masm) {
-  using D = OnStackReplacementDescriptor;
+  using D = InterpreterOnStackReplacementDescriptor;
   static_assert(D::kParameterCount == 1);
   OnStackReplacement(masm, OsrSourceTier::kInterpreter,
                      D::MaybeTargetCodeRegister());
@@ -1975,7 +1959,7 @@ void Builtins::Generate_InterpreterOnStackReplacement(MacroAssembler* masm) {
 
 #if ENABLE_SPARKPLUG
 void Builtins::Generate_BaselineOnStackReplacement(MacroAssembler* masm) {
-  using D = OnStackReplacementDescriptor;
+  using D = BaselineOnStackReplacementDescriptor;
   static_assert(D::kParameterCount == 1);
 
   __ LoadU64(kContextRegister,
@@ -2219,7 +2203,7 @@ void Builtins::Generate_CallOrConstructVarargs(MacroAssembler* masm,
 
   Register scratch = ip;
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     // Allow r5 to be a FixedArray, or a FixedDoubleArray if r7 == 0.
     Label ok, fail;
     __ AssertNotSmi(r5);
@@ -2970,7 +2954,7 @@ void Builtins::Generate_CEntry(MacroAssembler* masm, int result_size,
 
   // Check that there is no pending exception, otherwise we
   // should have returned the exception sentinel.
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     Label okay;
     ExternalReference pending_exception_address = ExternalReference::Create(
         IsolateAddressId::kPendingExceptionAddress, masm->isolate());
@@ -3055,7 +3039,7 @@ void Builtins::Generate_CEntry(MacroAssembler* masm, int result_size,
   ConstantPoolUnavailableScope constant_pool_unavailable(masm);
   __ Move(ip, pending_handler_entrypoint_address);
   __ LoadU64(ip, MemOperand(ip));
-  if (v8_flags.enable_embedded_constant_pool) {
+  if (FLAG_enable_embedded_constant_pool) {
     __ Move(kConstantPoolRegister, pending_handler_constant_pool_address);
     __ LoadU64(kConstantPoolRegister, MemOperand(kConstantPoolRegister));
   }
@@ -3249,7 +3233,7 @@ static void CallApiFunctionAndReturn(MacroAssembler* masm,
   // No more valid handles (the result handle was the last one). Restore
   // previous handle scope.
   __ StoreU64(r14, MemOperand(r17, kNextOffset));
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     __ lwz(r4, MemOperand(r17, kLevelOffset));
     __ CmpS64(r4, r16);
     __ Check(eq, AbortReason::kUnexpectedLevelAfterReturnFromApiCall);

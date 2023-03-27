@@ -812,20 +812,20 @@ void IC::SetCache(Handle<Name> name, const MaybeObjectHandle& handler) {
 }
 
 void LoadIC::UpdateCaches(LookupIterator* lookup) {
-  MaybeObjectHandle handler;
+  Handle<Object> handler;
   if (lookup->state() == LookupIterator::ACCESS_CHECK) {
-    handler = MaybeObjectHandle(LoadHandler::LoadSlow(isolate()));
+    handler = LoadHandler::LoadSlow(isolate());
   } else if (!lookup->IsFound()) {
     TRACE_HANDLER_STATS(isolate(), LoadIC_LoadNonexistentDH);
     Handle<Smi> smi_handler = LoadHandler::LoadNonExistent(isolate());
-    handler = MaybeObjectHandle(LoadHandler::LoadFullChain(
+    handler = LoadHandler::LoadFullChain(
         isolate(), lookup_start_object_map(),
-        MaybeObjectHandle(isolate()->factory()->null_value()), smi_handler));
+        MaybeObjectHandle(isolate()->factory()->null_value()), smi_handler);
   } else if (IsLoadGlobalIC() && lookup->state() == LookupIterator::JSPROXY) {
     // If there is proxy just install the slow stub since we need to call the
     // HasProperty trap for global loads. The ProxyGetProperty builtin doesn't
     // handle this case.
-    handler = MaybeObjectHandle(LoadHandler::LoadSlow(isolate()));
+    handler = LoadHandler::LoadSlow(isolate());
   } else {
     if (IsLoadGlobalIC()) {
       if (lookup->TryLookupCachedProperty()) {
@@ -931,7 +931,7 @@ Handle<Smi> MakeLoadWasmStructFieldHandler(Isolate* isolate,
 
 }  // namespace
 
-MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
+Handle<Object> LoadIC::ComputeHandler(LookupIterator* lookup) {
   Handle<Object> receiver = lookup->GetReceiver();
   ReadOnlyRoots roots(isolate());
 
@@ -943,14 +943,13 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
     if (lookup_start_object->IsString() &&
         *lookup->name() == roots.length_string()) {
       TRACE_HANDLER_STATS(isolate(), LoadIC_StringLength);
-      return MaybeObjectHandle(BUILTIN_CODE(isolate(), LoadIC_StringLength));
+      return BUILTIN_CODE(isolate(), LoadIC_StringLength);
     }
 
     if (lookup_start_object->IsStringWrapper() &&
         *lookup->name() == roots.length_string()) {
       TRACE_HANDLER_STATS(isolate(), LoadIC_StringWrapperLength);
-      return MaybeObjectHandle(
-          BUILTIN_CODE(isolate(), LoadIC_StringWrapperLength));
+      return BUILTIN_CODE(isolate(), LoadIC_StringWrapperLength);
     }
 
     // Use specialized code for getting prototype of functions.
@@ -959,8 +958,7 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
         !JSFunction::cast(*lookup_start_object)
              .PrototypeRequiresRuntimeLookup()) {
       TRACE_HANDLER_STATS(isolate(), LoadIC_FunctionPrototypeStub);
-      return MaybeObjectHandle(
-          BUILTIN_CODE(isolate(), LoadIC_FunctionPrototype));
+      return BUILTIN_CODE(isolate(), LoadIC_FunctionPrototype);
     }
   }
 
@@ -979,19 +977,19 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
           holder_ref = MaybeObjectHandle::Weak(holder);
         }
         TRACE_HANDLER_STATS(isolate(), LoadIC_LoadNonMaskingInterceptorDH);
-        return MaybeObjectHandle(LoadHandler::LoadFullChain(
-            isolate(), map, holder_ref, smi_handler));
+        return LoadHandler::LoadFullChain(isolate(), map, holder_ref,
+                                          smi_handler);
       }
 
       if (holder_is_lookup_start_object) {
         DCHECK(map->has_named_interceptor());
         TRACE_HANDLER_STATS(isolate(), LoadIC_LoadInterceptorDH);
-        return MaybeObjectHandle(smi_handler);
+        return smi_handler;
       }
 
       TRACE_HANDLER_STATS(isolate(), LoadIC_LoadInterceptorFromPrototypeDH);
-      return MaybeObjectHandle(
-          LoadHandler::LoadFromPrototype(isolate(), map, holder, smi_handler));
+      return LoadHandler::LoadFromPrototype(isolate(), map, holder,
+                                            smi_handler);
     }
 
     case LookupIterator::ACCESSOR: {
@@ -1003,8 +1001,7 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
       if (Accessors::IsJSObjectFieldAccessor(isolate(), map, lookup->name(),
                                              &field_index)) {
         TRACE_HANDLER_STATS(isolate(), LoadIC_LoadFieldDH);
-        return MaybeObjectHandle(
-            LoadHandler::LoadField(isolate(), field_index));
+        return LoadHandler::LoadField(isolate(), field_index);
       }
       if (holder->IsJSModuleNamespace()) {
         Handle<ObjectHashTable> exports(
@@ -1019,10 +1016,10 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
         Handle<Smi> smi_handler =
             LoadHandler::LoadModuleExport(isolate(), value_index);
         if (holder_is_lookup_start_object) {
-          return MaybeObjectHandle(smi_handler);
+          return smi_handler;
         }
-        return MaybeObjectHandle(LoadHandler::LoadFromPrototype(
-            isolate(), map, holder, smi_handler));
+        return LoadHandler::LoadFromPrototype(isolate(), map, holder,
+                                              smi_handler);
       }
 
       Handle<Object> accessors = lookup->GetAccessors();
@@ -1031,14 +1028,14 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
             Handle<AccessorPair>::cast(accessors);
         if (lookup->TryLookupCachedProperty(accessor_pair)) {
           DCHECK_EQ(LookupIterator::DATA, lookup->state());
-          return MaybeObjectHandle(ComputeHandler(lookup));
+          return ComputeHandler(lookup);
         }
 
         Handle<Object> getter(accessor_pair->getter(), isolate());
         if (!getter->IsJSFunction() && !getter->IsFunctionTemplateInfo()) {
           // TODO(jgruber): Update counter name.
           TRACE_HANDLER_STATS(isolate(), LoadIC_SlowStub);
-          return MaybeObjectHandle(LoadHandler::LoadSlow(isolate()));
+          return LoadHandler::LoadSlow(isolate());
         }
         set_accessor(getter);
 
@@ -1048,7 +1045,7 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
              JSFunction::cast(*getter).shared().BreakAtEntry())) {
           // Do not install an IC if the api function has a breakpoint.
           TRACE_HANDLER_STATS(isolate(), LoadIC_SlowStub);
-          return MaybeObjectHandle(LoadHandler::LoadSlow(isolate()));
+          return LoadHandler::LoadSlow(isolate());
         }
 
         Handle<Smi> smi_handler;
@@ -1064,7 +1061,7 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
                                                          holder_lookup) ||
               !holder->HasFastProperties()) {
             TRACE_HANDLER_STATS(isolate(), LoadIC_SlowStub);
-            return MaybeObjectHandle(LoadHandler::LoadSlow(isolate()));
+            return LoadHandler::LoadSlow(isolate());
           }
 
           smi_handler = LoadHandler::LoadApiGetter(
@@ -1074,39 +1071,34 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
               call_optimization.GetAccessorContext(holder->map()), isolate());
 
           TRACE_HANDLER_STATS(isolate(), LoadIC_LoadApiGetterFromPrototypeDH);
-          return MaybeObjectHandle(LoadHandler::LoadFromPrototype(
+          return LoadHandler::LoadFromPrototype(
               isolate(), map, holder, smi_handler,
               MaybeObjectHandle::Weak(call_optimization.api_call_info()),
-              MaybeObjectHandle::Weak(context)));
+              MaybeObjectHandle::Weak(context));
         }
 
         if (holder->HasFastProperties()) {
-          TRACE_HANDLER_STATS(isolate(), LoadIC_LoadAccessorDH);
-          if (holder_is_lookup_start_object)
-            return MaybeObjectHandle::Weak(accessor_pair);
-          TRACE_HANDLER_STATS(isolate(), LoadIC_LoadAccessorFromPrototypeDH);
-          return MaybeObjectHandle(LoadHandler::LoadFromPrototype(
-              isolate(), map, holder,
-              LoadHandler::LoadAccessorFromPrototype(isolate()),
-              MaybeObjectHandle::Weak(getter)));
-        }
+          smi_handler =
+              LoadHandler::LoadAccessor(isolate(), lookup->GetAccessorIndex());
 
-        if (holder->IsJSGlobalObject()) {
+          TRACE_HANDLER_STATS(isolate(), LoadIC_LoadAccessorDH);
+          if (holder_is_lookup_start_object) return smi_handler;
+          TRACE_HANDLER_STATS(isolate(), LoadIC_LoadAccessorFromPrototypeDH);
+        } else if (holder->IsJSGlobalObject()) {
           TRACE_HANDLER_STATS(isolate(), LoadIC_LoadGlobalFromPrototypeDH);
           smi_handler = LoadHandler::LoadGlobal(isolate());
-          return MaybeObjectHandle(LoadHandler::LoadFromPrototype(
+          return LoadHandler::LoadFromPrototype(
               isolate(), map, holder, smi_handler,
-              MaybeObjectHandle::Weak(lookup->GetPropertyCell())));
+              MaybeObjectHandle::Weak(lookup->GetPropertyCell()));
         } else {
           smi_handler = LoadHandler::LoadNormal(isolate());
           TRACE_HANDLER_STATS(isolate(), LoadIC_LoadNormalDH);
-          if (holder_is_lookup_start_object)
-            return MaybeObjectHandle(smi_handler);
+          if (holder_is_lookup_start_object) return smi_handler;
           TRACE_HANDLER_STATS(isolate(), LoadIC_LoadNormalFromPrototypeDH);
         }
 
-        return MaybeObjectHandle(LoadHandler::LoadFromPrototype(
-            isolate(), map, holder, smi_handler));
+        return LoadHandler::LoadFromPrototype(isolate(), map, holder,
+                                              smi_handler);
       }
 
       Handle<AccessorInfo> info = Handle<AccessorInfo>::cast(accessors);
@@ -1115,23 +1107,23 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
         set_slow_stub_reason(
             "getter needs to be reconfigured to data property");
         TRACE_HANDLER_STATS(isolate(), LoadIC_SlowStub);
-        return MaybeObjectHandle(LoadHandler::LoadSlow(isolate()));
+        return LoadHandler::LoadSlow(isolate());
       }
 
       if (!info->has_getter() || !holder->HasFastProperties() ||
           (info->is_sloppy() && !receiver->IsJSReceiver())) {
         TRACE_HANDLER_STATS(isolate(), LoadIC_SlowStub);
-        return MaybeObjectHandle(LoadHandler::LoadSlow(isolate()));
+        return LoadHandler::LoadSlow(isolate());
       }
 
       Handle<Smi> smi_handler = LoadHandler::LoadNativeDataProperty(
           isolate(), lookup->GetAccessorIndex());
       TRACE_HANDLER_STATS(isolate(), LoadIC_LoadNativeDataPropertyDH);
-      if (holder_is_lookup_start_object) return MaybeObjectHandle(smi_handler);
+      if (holder_is_lookup_start_object) return smi_handler;
       TRACE_HANDLER_STATS(isolate(),
                           LoadIC_LoadNativeDataPropertyFromPrototypeDH);
-      return MaybeObjectHandle(
-          LoadHandler::LoadFromPrototype(isolate(), map, holder, smi_handler));
+      return LoadHandler::LoadFromPrototype(isolate(), map, holder,
+                                            smi_handler);
     }
 
     case LookupIterator::DATA: {
@@ -1144,14 +1136,13 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
           // workaround for code that leaks the global object.
           TRACE_HANDLER_STATS(isolate(), LoadIC_LoadGlobalDH);
           smi_handler = LoadHandler::LoadGlobal(isolate());
-          return MaybeObjectHandle(LoadHandler::LoadFromPrototype(
+          return LoadHandler::LoadFromPrototype(
               isolate(), map, holder, smi_handler,
-              MaybeObjectHandle::Weak(lookup->GetPropertyCell())));
+              MaybeObjectHandle::Weak(lookup->GetPropertyCell()));
         }
         smi_handler = LoadHandler::LoadNormal(isolate());
         TRACE_HANDLER_STATS(isolate(), LoadIC_LoadNormalDH);
-        if (holder_is_lookup_start_object)
-          return MaybeObjectHandle(smi_handler);
+        if (holder_is_lookup_start_object) return smi_handler;
         TRACE_HANDLER_STATS(isolate(), LoadIC_LoadNormalFromPrototypeDH);
       } else if (lookup->IsElement(*holder)) {
 #if V8_ENABLE_WEBASSEMBLY
@@ -1159,11 +1150,11 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
           // TODO(ishell): Consider supporting indexed access to WasmStruct
           // fields.
           TRACE_HANDLER_STATS(isolate(), LoadIC_LoadNonexistentDH);
-          return MaybeObjectHandle(LoadHandler::LoadNonExistent(isolate()));
+          return LoadHandler::LoadNonExistent(isolate());
         }
 #endif  // V8_ENABLE_WEBASSEMBLY
         TRACE_HANDLER_STATS(isolate(), LoadIC_SlowStub);
-        return MaybeObjectHandle(LoadHandler::LoadSlow(isolate()));
+        return LoadHandler::LoadSlow(isolate());
       } else {
         DCHECK_EQ(PropertyLocation::kField,
                   lookup->property_details().location());
@@ -1179,8 +1170,7 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
           smi_handler = LoadHandler::LoadField(isolate(), field);
         }
         TRACE_HANDLER_STATS(isolate(), LoadIC_LoadFieldDH);
-        if (holder_is_lookup_start_object)
-          return MaybeObjectHandle(smi_handler);
+        if (holder_is_lookup_start_object) return smi_handler;
         TRACE_HANDLER_STATS(isolate(), LoadIC_LoadFieldFromPrototypeDH);
       }
       if (lookup->constness() == PropertyConstness::kConst &&
@@ -1207,24 +1197,24 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
 
           smi_handler = LoadHandler::LoadConstantFromPrototype(isolate());
           TRACE_HANDLER_STATS(isolate(), LoadIC_LoadConstantFromPrototypeDH);
-          return MaybeObjectHandle(LoadHandler::LoadFromPrototype(
-              isolate(), map, holder, smi_handler, weak_value));
+          return LoadHandler::LoadFromPrototype(isolate(), map, holder,
+                                                smi_handler, weak_value);
         }
       }
-      return MaybeObjectHandle(
-          LoadHandler::LoadFromPrototype(isolate(), map, holder, smi_handler));
+      return LoadHandler::LoadFromPrototype(isolate(), map, holder,
+                                            smi_handler);
     }
     case LookupIterator::INTEGER_INDEXED_EXOTIC:
       TRACE_HANDLER_STATS(isolate(), LoadIC_LoadIntegerIndexedExoticDH);
-      return MaybeObjectHandle(LoadHandler::LoadNonExistent(isolate()));
+      return LoadHandler::LoadNonExistent(isolate());
 
     case LookupIterator::JSPROXY: {
       Handle<Smi> smi_handler = LoadHandler::LoadProxy(isolate());
-      if (holder_is_lookup_start_object) return MaybeObjectHandle(smi_handler);
+      if (holder_is_lookup_start_object) return smi_handler;
 
       Handle<JSProxy> holder_proxy = lookup->GetHolder<JSProxy>();
-      return MaybeObjectHandle(LoadHandler::LoadFromPrototype(
-          isolate(), map, holder_proxy, smi_handler));
+      return LoadHandler::LoadFromPrototype(isolate(), map, holder_proxy,
+                                            smi_handler);
     }
     case LookupIterator::ACCESS_CHECK:
     case LookupIterator::NOT_FOUND:
@@ -1232,7 +1222,7 @@ MaybeObjectHandle LoadIC::ComputeHandler(LookupIterator* lookup) {
       UNREACHABLE();
   }
 
-  return MaybeObjectHandle(Handle<Code>::null());
+  return Handle<Code>::null();
 }
 
 bool KeyedLoadIC::CanChangeToAllowOutOfBounds(Handle<Map> receiver_map) {

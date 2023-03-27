@@ -119,7 +119,6 @@ class ObjectIterator;
 class ObjectStats;
 class Page;
 class PagedSpace;
-class PagedNewSpace;
 class ReadOnlyHeap;
 class RootVisitor;
 class RwxMemoryWriteScope;
@@ -179,9 +178,8 @@ enum class GarbageCollectionReason : int {
   kMeasureMemory = 24,
   kBackgroundAllocationFailure = 25,
   kFinalizeMinorMC = 26,
-  kCppHeapAllocationFailure = 27,
 
-  kLastReason = kCppHeapAllocationFailure,
+  kLastReason = kBackgroundAllocationFailure,
 };
 
 static_assert(kGarbageCollectionReasonMaxValue ==
@@ -440,7 +438,7 @@ class Heap {
     return true;
 #else
 #ifdef VERIFY_HEAP
-    return v8_flags.verify_heap;
+    return FLAG_verify_heap;
 #else
     return false;
 #endif
@@ -452,7 +450,7 @@ class Heap {
   static inline base::EnumSet<CodeFlushMode> GetCodeFlushMode(Isolate* isolate);
 
   static uintptr_t ZapValue() {
-    return v8_flags.clear_free_memory ? kClearedFreeMemoryValue : kZapValue;
+    return FLAG_clear_free_memory ? kClearedFreeMemoryValue : kZapValue;
   }
 
   static inline bool IsYoungGenerationCollector(GarbageCollector collector) {
@@ -461,8 +459,8 @@ class Heap {
   }
 
   static inline GarbageCollector YoungGenerationCollector() {
-    return (v8_flags.minor_mc) ? GarbageCollector::MINOR_MARK_COMPACTOR
-                               : GarbageCollector::SCAVENGER;
+    return (FLAG_minor_mc) ? GarbageCollector::MINOR_MARK_COMPACTOR
+                           : GarbageCollector::SCAVENGER;
   }
 
   static inline const char* CollectorName(GarbageCollector collector) {
@@ -635,9 +633,9 @@ class Heap {
   void PrintShortHeapStatistics();
 
   // Print statistics of freelists of old_space:
-  //  with v8_flags.trace_gc_freelists: summary of each FreeListCategory.
-  //  with v8_flags.trace_gc_freelists_verbose: also prints the statistics of
-  //  each FreeListCategory of each page.
+  //  with FLAG_trace_gc_freelists: summary of each FreeListCategory.
+  //  with FLAG_trace_gc_freelists_verbose: also prints the statistics of each
+  //  FreeListCategory of each page.
   void PrintFreeListsStats();
 
   // Dump heap statistics in JSON format.
@@ -693,7 +691,7 @@ class Heap {
 
   inline bool IsInGCPostProcessing() { return gc_post_processing_depth_ > 0; }
 
-  bool IsGCWithStack() const;
+  bool IsGCWithoutStack() const;
 
   // If an object has an AllocationMemento trailing it, return it, otherwise
   // return a null AllocationMemento.
@@ -784,7 +782,7 @@ class Heap {
                                         Handle<Map> map);
 
   // This event is triggered after object is moved to a new place.
-  void OnMoveEvent(HeapObject source, HeapObject target, int size_in_bytes);
+  void OnMoveEvent(HeapObject target, HeapObject source, int size_in_bytes);
 
   bool deserialization_complete() const { return deserialization_complete_; }
 
@@ -874,7 +872,6 @@ class Heap {
   inline Address NewSpaceTop();
 
   NewSpace* new_space() const { return new_space_; }
-  inline PagedNewSpace* paged_new_space() const;
   OldSpace* old_space() const { return old_space_; }
   OldSpace* shared_old_space() const { return shared_old_space_; }
   CodeSpace* code_space() const { return code_space_; }
@@ -1455,10 +1452,6 @@ class Heap {
 
   bool is_current_gc_forced() const { return is_current_gc_forced_; }
 
-  GarbageCollector current_or_last_garbage_collector() const {
-    return current_or_last_garbage_collector_;
-  }
-
   // Returns whether the currently in-progress GC should avoid increasing the
   // ages on any objects that live for a set number of collections.
   bool ShouldCurrentGCKeepAgesUnchanged() const {
@@ -1790,7 +1783,6 @@ class Heap {
 
   // Checks whether a global GC is necessary
   GarbageCollector SelectGarbageCollector(AllocationSpace space,
-                                          GarbageCollectionReason gc_reason,
                                           const char** reason);
 
   // Free all LABs in the heap.
@@ -2016,7 +2008,7 @@ class Heap {
       LocalHeap* local_heap = nullptr);
   bool IsRetryOfFailedAllocation(LocalHeap* local_heap);
   bool IsMainThreadParked(LocalHeap* local_heap);
-  bool IsMajorMarkingComplete(LocalHeap* local_heap);
+  bool IsMarkingComplete(LocalHeap* local_heap);
 
   HeapGrowingMode CurrentHeapGrowingMode();
 
@@ -2033,7 +2025,7 @@ class Heap {
   bool ShouldStressCompaction() const;
 
   bool UseGlobalMemoryScheduling() const {
-    return v8_flags.global_gc_scheduling && local_embedder_heap_tracer();
+    return FLAG_global_gc_scheduling && local_embedder_heap_tracer();
   }
 
   base::Optional<size_t> GlobalMemoryAvailable();
@@ -2212,7 +2204,7 @@ class Heap {
   LocalHeap* main_thread_local_heap_ = nullptr;
 
   // Determines whether code space is write-protected. This is essentially a
-  // race-free copy of the {v8_flags.write_protect_code_memory} flag.
+  // race-free copy of the {FLAG_write_protect_code_memory} flag.
   bool write_protect_code_memory_ = false;
 
   // Holds the number of open CodeSpaceMemoryModificationScopes.
@@ -2393,8 +2385,6 @@ class Heap {
 
   bool is_current_gc_forced_ = false;
   bool is_current_gc_for_heap_profiler_ = false;
-  GarbageCollector current_or_last_garbage_collector_ =
-      GarbageCollector::SCAVENGER;
 
   ExternalStringTable external_string_table_;
 
@@ -2589,7 +2579,7 @@ class V8_NODISCARD CodeSpaceMemoryModificationScope {
   inline ~CodeSpaceMemoryModificationScope();
 
  private:
-#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT || V8_HEAP_USE_PKU_JIT_WRITE_PROTECT
+#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT
   V8_NO_UNIQUE_ADDRESS RwxMemoryWriteScope rwx_write_scope_;
 #endif
   Heap* heap_;
@@ -2603,7 +2593,7 @@ class V8_NODISCARD CodePageCollectionMemoryModificationScope {
   inline ~CodePageCollectionMemoryModificationScope();
 
  private:
-#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT || V8_HEAP_USE_PKU_JIT_WRITE_PROTECT
+#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT
   V8_NO_UNIQUE_ADDRESS RwxMemoryWriteScope rwx_write_scope_;
 #endif
   Heap* heap_;
@@ -2668,7 +2658,7 @@ class V8_NODISCARD CodePageMemoryModificationScope {
   inline ~CodePageMemoryModificationScope();
 
  private:
-#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT || V8_HEAP_USE_PKU_JIT_WRITE_PROTECT
+#if V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT
   V8_NO_UNIQUE_ADDRESS RwxMemoryWriteScope rwx_write_scope_;
 #endif
   BasicMemoryChunk* chunk_;

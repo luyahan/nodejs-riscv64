@@ -96,9 +96,7 @@ class V8_EXPORT_PRIVATE IncrementalMarking final {
 
   bool IsStopped() const { return !IsMarking(); }
   bool IsMarking() const { return is_marking_; }
-  bool IsMajorMarkingComplete() const {
-    return IsMajorMarking() && ShouldFinalize();
-  }
+  bool IsMarkingComplete() const { return IsMarking() && ShouldFinalize(); }
 
   bool CollectionRequested() const {
     return collection_requested_via_stack_guard_;

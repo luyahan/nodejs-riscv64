@@ -11,6 +11,7 @@
 
 #include "src/ast/ast-source-ranges.h"
 #include "src/base/bits.h"
+#include "src/base/macros.h"
 #include "src/builtins/accessors.h"
 #include "src/builtins/constants-table-builder.h"
 #include "src/codegen/compilation-cache.h"
@@ -243,7 +244,7 @@ MaybeHandle<Code> Factory::CodeBuilder::BuildInternal(
       data_container->SetCodeAndEntryPoint(isolate_, raw_code);
     }
 #ifdef VERIFY_HEAP
-    if (v8_flags.verify_heap) HeapObject::VerifyCodePointer(isolate_, raw_code);
+    if (FLAG_verify_heap) HeapObject::VerifyCodePointer(isolate_, raw_code);
 #endif
 
     // Flush the instruction cache before changing the permissions.
@@ -254,7 +255,7 @@ MaybeHandle<Code> Factory::CodeBuilder::BuildInternal(
     raw_code.FlushICache();
   }
 
-  if (profiler_data_ && v8_flags.turbo_profiling_verbose) {
+  if (profiler_data_ && FLAG_turbo_profiling_verbose) {
 #ifdef ENABLE_DISASSEMBLER
     std::ostringstream os;
     code->Disassemble(nullptr, os, isolate_);
@@ -373,7 +374,7 @@ void Factory::InitializeAllocationMemento(AllocationMemento memento,
   memento.set_map_after_allocation(*allocation_memento_map(),
                                    SKIP_WRITE_BARRIER);
   memento.set_allocation_site(allocation_site, SKIP_WRITE_BARRIER);
-  if (v8_flags.allocation_site_pretenuring) {
+  if (FLAG_allocation_site_pretenuring) {
     allocation_site.IncrementMementoCreateCount();
   }
 }
@@ -478,7 +479,7 @@ MaybeHandle<FixedArray> Factory::TryNewFixedArray(
   HeapObject result;
   if (!allocation.To(&result)) return MaybeHandle<FixedArray>();
   if ((size > heap->MaxRegularHeapObjectSize(allocation_type)) &&
-      v8_flags.use_marking_progress_bar) {
+      FLAG_use_marking_progress_bar) {
     LargePage::FromHeapObject(result)->ProgressBar().Enable();
   }
   DisallowGarbageCollection no_gc;
@@ -520,7 +521,6 @@ Handle<FeedbackVector> Factory::NewFeedbackVector(
   vector.set_placeholder0(0);
   vector.reset_osr_state();
   vector.reset_flags();
-  vector.set_log_next_execution(v8_flags.log_function_events);
   vector.set_closure_feedback_cell_array(*closure_feedback_cell_array);
 
   // TODO(leszeks): Initialize based on the feedback metadata.
@@ -979,7 +979,7 @@ StringTransitionStrategy Factory::ComputeInternalizationStrategyForString(
   }
   // If the string table is shared, we need to copy if the string is not already
   // in the shared heap.
-  if (v8_flags.shared_string_table && !string->InSharedHeap()) {
+  if (FLAG_shared_string_table && !string->InSharedHeap()) {
     return StringTransitionStrategy::kCopy;
   }
   DCHECK_NOT_NULL(internalized_map);
@@ -1021,7 +1021,7 @@ template Handle<ExternalTwoByteString>
 
 StringTransitionStrategy Factory::ComputeSharingStrategyForString(
     Handle<String> string, MaybeHandle<Map>* shared_map) {
-  DCHECK(v8_flags.shared_string_table);
+  DCHECK(FLAG_shared_string_table);
   // Do not share young strings in-place: there is no shared young space.
   if (Heap::InYoungGeneration(*string)) {
     return StringTransitionStrategy::kCopy;
@@ -1038,21 +1038,6 @@ StringTransitionStrategy Factory::ComputeSharingStrategyForString(
       return StringTransitionStrategy::kInPlace;
     case ONE_BYTE_STRING_TYPE:
       *shared_map = read_only_roots().shared_one_byte_string_map_handle();
-      return StringTransitionStrategy::kInPlace;
-    case EXTERNAL_STRING_TYPE:
-      *shared_map = read_only_roots().shared_external_string_map_handle();
-      return StringTransitionStrategy::kInPlace;
-    case EXTERNAL_ONE_BYTE_STRING_TYPE:
-      *shared_map =
-          read_only_roots().shared_external_one_byte_string_map_handle();
-      return StringTransitionStrategy::kInPlace;
-    case UNCACHED_EXTERNAL_STRING_TYPE:
-      *shared_map =
-          read_only_roots().shared_uncached_external_string_map_handle();
-      return StringTransitionStrategy::kInPlace;
-    case UNCACHED_EXTERNAL_ONE_BYTE_STRING_TYPE:
-      *shared_map = read_only_roots()
-                        .shared_uncached_external_one_byte_string_map_handle();
       return StringTransitionStrategy::kInPlace;
     default:
       return StringTransitionStrategy::kCopy;
@@ -1077,7 +1062,7 @@ Handle<String> Factory::NewSurrogatePairString(uint16_t lead, uint16_t trail) {
 Handle<String> Factory::NewProperSubString(Handle<String> str, int begin,
                                            int end) {
 #if VERIFY_HEAP
-  if (v8_flags.verify_heap) str->StringVerify(isolate());
+  if (FLAG_verify_heap) str->StringVerify(isolate());
 #endif
   DCHECK(begin > 0 || end < str->length());
 
@@ -1097,7 +1082,7 @@ Handle<String> Factory::NewProperSubString(Handle<String> str, int begin,
     return MakeOrFindTwoCharacterString(c1, c2);
   }
 
-  if (!v8_flags.string_slices || length < SlicedString::kMinLength) {
+  if (!FLAG_string_slices || length < SlicedString::kMinLength) {
     if (str->IsOneByteRepresentation()) {
       Handle<SeqOneByteString> result =
           NewRawOneByteString(length).ToHandleChecked();
@@ -1359,7 +1344,7 @@ Handle<Context> Factory::NewCatchContext(Handle<Context> previous,
       isolate()->catch_context_map(), Context::SizeFor(variadic_part_length),
       variadic_part_length, AllocationType::kYoung);
   DisallowGarbageCollection no_gc;
-  DCHECK_IMPLIES(!v8_flags.single_generation, Heap::InYoungGeneration(context));
+  DCHECK_IMPLIES(!FLAG_single_generation, Heap::InYoungGeneration(context));
   context.set_scope_info(*scope_info, SKIP_WRITE_BARRIER);
   context.set_previous(*previous, SKIP_WRITE_BARRIER);
   context.set(Context::THROWN_OBJECT_INDEX, *thrown_object, SKIP_WRITE_BARRIER);
@@ -1381,7 +1366,7 @@ Handle<Context> Factory::NewDebugEvaluateContext(Handle<Context> previous,
                          Context::SizeFor(variadic_part_length),
                          variadic_part_length, AllocationType::kYoung);
   DisallowGarbageCollection no_gc;
-  DCHECK_IMPLIES(!v8_flags.single_generation, Heap::InYoungGeneration(context));
+  DCHECK_IMPLIES(!FLAG_single_generation, Heap::InYoungGeneration(context));
   context.set_scope_info(*scope_info, SKIP_WRITE_BARRIER);
   context.set_previous(*previous, SKIP_WRITE_BARRIER);
   context.set_extension(*ext, SKIP_WRITE_BARRIER);
@@ -1401,7 +1386,7 @@ Handle<Context> Factory::NewWithContext(Handle<Context> previous,
       isolate()->with_context_map(), Context::SizeFor(variadic_part_length),
       variadic_part_length, AllocationType::kYoung);
   DisallowGarbageCollection no_gc;
-  DCHECK_IMPLIES(!v8_flags.single_generation, Heap::InYoungGeneration(context));
+  DCHECK_IMPLIES(!FLAG_single_generation, Heap::InYoungGeneration(context));
   context.set_scope_info(*scope_info, SKIP_WRITE_BARRIER);
   context.set_previous(*previous, SKIP_WRITE_BARRIER);
   context.set_extension(*extension, SKIP_WRITE_BARRIER);
@@ -1417,7 +1402,7 @@ Handle<Context> Factory::NewBlockContext(Handle<Context> previous,
       isolate()->block_context_map(), Context::SizeFor(variadic_part_length),
       variadic_part_length, AllocationType::kYoung);
   DisallowGarbageCollection no_gc;
-  DCHECK_IMPLIES(!v8_flags.single_generation, Heap::InYoungGeneration(context));
+  DCHECK_IMPLIES(!FLAG_single_generation, Heap::InYoungGeneration(context));
   context.set_scope_info(*scope_info, SKIP_WRITE_BARRIER);
   context.set_previous(*previous, SKIP_WRITE_BARRIER);
   return handle(context, isolate());
@@ -1430,7 +1415,7 @@ Handle<Context> Factory::NewBuiltinContext(Handle<NativeContext> native_context,
       isolate()->function_context_map(), Context::SizeFor(variadic_part_length),
       variadic_part_length, AllocationType::kYoung);
   DisallowGarbageCollection no_gc;
-  DCHECK_IMPLIES(!v8_flags.single_generation, Heap::InYoungGeneration(context));
+  DCHECK_IMPLIES(!FLAG_single_generation, Heap::InYoungGeneration(context));
   context.set_scope_info(read_only_roots().empty_scope_info(),
                          SKIP_WRITE_BARRIER);
   context.set_previous(*native_context, SKIP_WRITE_BARRIER);
@@ -2067,13 +2052,12 @@ Map Factory::InitializeMap(Map map, InstanceType type, int instance_size,
     map.SetInObjectPropertiesStartInWords(instance_size / kTaggedSize -
                                           inobject_properties);
     DCHECK_EQ(map.GetInObjectProperties(), inobject_properties);
-    map.set_prototype_validity_cell(roots->invalid_prototype_validity_cell(),
-                                    kRelaxedStore);
+    map.set_prototype_validity_cell(roots->invalid_prototype_validity_cell());
   } else {
     DCHECK_EQ(inobject_properties, 0);
     map.set_inobject_properties_start_or_constructor_function_index(0);
     map.set_prototype_validity_cell(Smi::FromInt(Map::kPrototypeChainValid),
-                                    kRelaxedStore, SKIP_WRITE_BARRIER);
+                                    SKIP_WRITE_BARRIER);
   }
   map.set_dependent_code(DependentCode::empty_dependent_code(ro_roots),
                          SKIP_WRITE_BARRIER);
@@ -2086,7 +2070,7 @@ Map Factory::InitializeMap(Map map, InstanceType type, int instance_size,
   DCHECK(!map.is_in_retained_map_list());
   map.clear_padding();
   map.set_elements_kind(elements_kind);
-  if (v8_flags.log_maps) LOG(isolate(), MapCreate(map));
+  if (FLAG_log_maps) LOG(isolate(), MapCreate(map));
   return map;
 }
 
@@ -2123,17 +2107,20 @@ Handle<JSObject> Factory::CopyJSObjectWithAllocationSite(
   if (!site.is_null()) {
     DCHECK(V8_ALLOCATION_SITE_TRACKING_BOOL);
     adjusted_object_size += AllocationMemento::kSize;
+    if (V8_COMPRESS_POINTERS_8GB_BOOL &&
+        !IsAligned(object_size, kObjectAlignment8GbHeap))
+      adjusted_object_size += kObjectAlignment8GbHeap - kTaggedSize;
   }
   HeapObject raw_clone =
       allocator()->AllocateRawWith<HeapAllocator::kRetryOrFail>(
           adjusted_object_size, AllocationType::kYoung);
 
-  DCHECK(Heap::InYoungGeneration(raw_clone) || v8_flags.single_generation);
+  DCHECK(Heap::InYoungGeneration(raw_clone) || FLAG_single_generation);
 
   Heap::CopyBlock(raw_clone.address(), source->address(), object_size);
   Handle<JSObject> clone(JSObject::cast(raw_clone), isolate());
 
-  if (v8_flags.enable_unconditional_write_barriers) {
+  if (FLAG_enable_unconditional_write_barriers) {
     // By default, we shouldn't need to update the write barrier here, as the
     // clone will be allocated in new space.
     const ObjectSlot start(raw_clone.address());
@@ -2141,8 +2128,14 @@ Handle<JSObject> Factory::CopyJSObjectWithAllocationSite(
     isolate()->heap()->WriteBarrierForRange(raw_clone, start, end);
   }
   if (!site.is_null()) {
-    AllocationMemento alloc_memento = AllocationMemento::unchecked_cast(
-        Object(raw_clone.ptr() + object_size));
+    if (V8_COMPRESS_POINTERS_8GB_BOOL &&
+        !IsAligned(object_size, kObjectAlignment8GbHeap)) {
+      isolate()->heap()->CreateFillerObjectAt(
+          raw_clone.address() + object_size,
+          kObjectAlignment8GbHeap - kTaggedSize);
+    }
+    AllocationMemento alloc_memento = AllocationMemento::unchecked_cast(Object(
+        raw_clone.ptr() + adjusted_object_size - AllocationMemento::kSize));
     InitializeAllocationMemento(alloc_memento, *site);
   }
 
@@ -2395,7 +2388,7 @@ Handle<JSObject> Factory::NewError(Handle<JSFunction> constructor,
 }
 
 Handle<Object> Factory::NewInvalidStringLengthError() {
-  if (v8_flags.correctness_fuzzer_suppressions) {
+  if (FLAG_correctness_fuzzer_suppressions) {
     FATAL("Aborting on invalid string length");
   }
   // Invalidate the "string length" protector.
@@ -3011,7 +3004,7 @@ MaybeHandle<JSArrayBuffer> Factory::NewJSArrayBufferAndBackingStore(
 
 Handle<JSArrayBuffer> Factory::NewJSSharedArrayBuffer(
     std::shared_ptr<BackingStore> backing_store) {
-  DCHECK_IMPLIES(backing_store->is_resizable(), v8_flags.harmony_rab_gsab);
+  DCHECK_IMPLIES(backing_store->is_resizable(), FLAG_harmony_rab_gsab);
   Handle<Map> map(
       isolate()->native_context()->shared_array_buffer_fun().initial_map(),
       isolate());
@@ -3592,8 +3585,8 @@ void Factory::SetRegExpIrregexpData(Handle<JSRegExp> regexp,
       *NewFixedArray(JSRegExp::kIrregexpDataSize, AllocationType::kYoung);
   DisallowGarbageCollection no_gc;
   Smi uninitialized = Smi::FromInt(JSRegExp::kUninitializedValue);
-  Smi ticks_until_tier_up = v8_flags.regexp_tier_up
-                                ? Smi::FromInt(v8_flags.regexp_tier_up_ticks)
+  Smi ticks_until_tier_up = FLAG_regexp_tier_up
+                                ? Smi::FromInt(FLAG_regexp_tier_up_ticks)
                                 : uninitialized;
   store.set(JSRegExp::kTagIndex, Smi::FromInt(JSRegExp::IRREGEXP));
   store.set(JSRegExp::kSourceIndex, *source, SKIP_WRITE_BARRIER);

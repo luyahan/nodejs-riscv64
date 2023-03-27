@@ -687,8 +687,9 @@ TEST(MakingExternalStringConditions) {
   CHECK(local_string->CanMakeExternal());
 
   // Tiny strings are not in-place externalizable when pointer compression is
-  // enabled, but they are if the sandbox is enabled.
-  CHECK_EQ(V8_ENABLE_SANDBOX_BOOL || i::kTaggedSize == i::kSystemPointerSize,
+  // enabled, but they are if sandboxed external pointers are enabled.
+  CHECK_EQ(V8_SANDBOXED_EXTERNAL_POINTERS_BOOL ||
+               i::kTaggedSize == i::kSystemPointerSize,
            tiny_local_string->CanMakeExternal());
 }
 
@@ -12878,22 +12879,6 @@ TEST(ObjectProtoToStringES6) {
   }
 }
 
-namespace {
-
-void CheckGetConstructorNameOfVar(LocalContext& context, const char* var_name,
-                                  const char* constructor_name) {
-  Local<v8::Value> var = context->Global()
-                             ->Get(context.local(), v8_str(var_name))
-                             .ToLocalChecked();
-  CHECK(var->IsObject() &&
-        var->ToObject(context.local())
-            .ToLocalChecked()
-            ->GetConstructorName()
-            ->Equals(context.local(), v8_str(constructor_name))
-            .FromJust());
-}
-
-}  // namespace
 
 THREADED_TEST(ObjectGetConstructorName) {
   v8::Isolate* isolate = CcTest::isolate();
@@ -12912,10 +12897,41 @@ THREADED_TEST(ObjectGetConstructorName) {
       ->Run(context.local())
       .ToLocalChecked();
 
-  CheckGetConstructorNameOfVar(context, "p", "Parent");
-  CheckGetConstructorNameOfVar(context, "c", "Child");
-  CheckGetConstructorNameOfVar(context, "x", "outer.inner");
-  CheckGetConstructorNameOfVar(context, "proto", "Parent");
+  Local<v8::Value> p =
+      context->Global()->Get(context.local(), v8_str("p")).ToLocalChecked();
+  CHECK(p->IsObject() &&
+        p->ToObject(context.local())
+            .ToLocalChecked()
+            ->GetConstructorName()
+            ->Equals(context.local(), v8_str("Parent"))
+            .FromJust());
+
+  Local<v8::Value> c =
+      context->Global()->Get(context.local(), v8_str("c")).ToLocalChecked();
+  CHECK(c->IsObject() &&
+        c->ToObject(context.local())
+            .ToLocalChecked()
+            ->GetConstructorName()
+            ->Equals(context.local(), v8_str("Child"))
+            .FromJust());
+
+  Local<v8::Value> x =
+      context->Global()->Get(context.local(), v8_str("x")).ToLocalChecked();
+  CHECK(x->IsObject() &&
+        x->ToObject(context.local())
+            .ToLocalChecked()
+            ->GetConstructorName()
+            ->Equals(context.local(), v8_str("outer.inner"))
+            .FromJust());
+
+  Local<v8::Value> child_prototype =
+      context->Global()->Get(context.local(), v8_str("proto")).ToLocalChecked();
+  CHECK(child_prototype->IsObject() &&
+        child_prototype->ToObject(context.local())
+            .ToLocalChecked()
+            ->GetConstructorName()
+            ->Equals(context.local(), v8_str("Parent"))
+            .FromJust());
 }
 
 
@@ -12932,39 +12948,25 @@ THREADED_TEST(SubclassGetConstructorName) {
       ->Run(context.local())
       .ToLocalChecked();
 
-  CheckGetConstructorNameOfVar(context, "p", "Parent");
-  CheckGetConstructorNameOfVar(context, "c", "Child");
+  Local<v8::Value> p =
+      context->Global()->Get(context.local(), v8_str("p")).ToLocalChecked();
+  CHECK(p->IsObject() &&
+        p->ToObject(context.local())
+            .ToLocalChecked()
+            ->GetConstructorName()
+            ->Equals(context.local(), v8_str("Parent"))
+            .FromJust());
+
+  Local<v8::Value> c =
+      context->Global()->Get(context.local(), v8_str("c")).ToLocalChecked();
+  CHECK(c->IsObject() &&
+        c->ToObject(context.local())
+            .ToLocalChecked()
+            ->GetConstructorName()
+            ->Equals(context.local(), v8_str("Child"))
+            .FromJust());
 }
 
-UNINITIALIZED_TEST(SharedObjectGetConstructorName) {
-  if (!V8_CAN_CREATE_SHARED_HEAP_BOOL) return;
-
-  i::FLAG_shared_string_table = true;
-  i::FLAG_harmony_struct = true;
-
-  v8::Isolate::CreateParams create_params;
-  create_params.array_buffer_allocator = CcTest::array_buffer_allocator();
-  v8::Isolate* isolate = v8::Isolate::New(create_params);
-  {
-    v8::Isolate::Scope i_scope(isolate);
-    v8::HandleScope scope(isolate);
-    LocalContext context(isolate);
-
-    v8_compile(
-        "var s = new (new SharedStructType(['foo']));"
-        "var a = new SharedArray(1);"
-        "var m = new Atomics.Mutex;"
-        "var c = new Atomics.Condition;")
-        ->Run(context.local())
-        .ToLocalChecked();
-
-    CheckGetConstructorNameOfVar(context, "s", "SharedStruct");
-    CheckGetConstructorNameOfVar(context, "a", "SharedArray");
-    CheckGetConstructorNameOfVar(context, "m", "Atomics.Mutex");
-    CheckGetConstructorNameOfVar(context, "c", "Atomics.Condition");
-  }
-  isolate->Dispose();
-}
 
 bool ApiTestFuzzer::fuzzing_ = false;
 v8::base::Semaphore ApiTestFuzzer::all_tests_done_(0);
@@ -13012,12 +13014,8 @@ void ApiTestFuzzer::Run() {
   // When it is our turn...
   gate_.Wait();
   {
-    // ... get the V8 lock
+    // ... get the V8 lock and start running the test.
     v8::Locker locker(CcTest::isolate());
-    // ... set the isolate stack to this thread
-    CcTest::i_isolate()->heap()->SetStackStart(
-        v8::base::Stack::GetStackStart());
-    // ... and start running the test.
     CallTest();
   }
   // This test finished.
@@ -13084,9 +13082,6 @@ void ApiTestFuzzer::ContextSwitch() {
     v8::Unlocker unlocker(CcTest::isolate());
     // Wait till someone starts us again.
     gate_.Wait();
-    // Set the isolate stack to this thread.
-    CcTest::i_isolate()->heap()->SetStackStart(
-        v8::base::Stack::GetStackStart());
     // And we're off.
   }
 }
@@ -13689,7 +13684,8 @@ UNINITIALIZED_TEST(SetJitCodeEventHandler) {
   i::Heap* heap = i_isolate->heap();
 
   // Start with a clean slate.
-  CcTest::CollectAllAvailableGarbage(i_isolate);
+  heap->CollectAllAvailableGarbage(i::GarbageCollectionReason::kTesting);
+
   {
     v8::HandleScope scope(isolate);
     v8::base::HashMap code;
@@ -13733,7 +13729,7 @@ UNINITIALIZED_TEST(SetJitCodeEventHandler) {
     }
 
     // Force code movement.
-    CcTest::CollectAllAvailableGarbage(i_isolate);
+    heap->CollectAllAvailableGarbage(i::GarbageCollectionReason::kTesting);
 
     isolate->SetJitCodeEventHandler(v8::kJitCodeEventDefault, nullptr);
 
@@ -17040,7 +17036,8 @@ THREADED_TEST(QuietSignalingNaNs) {
     } else {
       uint64_t stored_bits = DoubleToBits(stored_number);
       // Check if quiet nan (bits 51..62 all set).
-#if (defined(V8_TARGET_ARCH_MIPS64)) && !defined(_MIPS_ARCH_MIPS64R6) && \
+#if (defined(V8_TARGET_ARCH_MIPS) || defined(V8_TARGET_ARCH_MIPS64)) && \
+    !defined(_MIPS_ARCH_MIPS64R6) && !defined(_MIPS_ARCH_MIPS32R6) &&   \
     !defined(USE_SIMULATOR)
       // Most significant fraction bit for quiet nan is set to 0
       // on MIPS architecture. Allowed by IEEE-754.
@@ -17061,7 +17058,8 @@ THREADED_TEST(QuietSignalingNaNs) {
     } else {
       uint64_t stored_bits = DoubleToBits(stored_date);
       // Check if quiet nan (bits 51..62 all set).
-#if (defined(V8_TARGET_ARCH_MIPS64)) && !defined(_MIPS_ARCH_MIPS64R6) && \
+#if (defined(V8_TARGET_ARCH_MIPS) || defined(V8_TARGET_ARCH_MIPS64)) && \
+    !defined(_MIPS_ARCH_MIPS64R6) && !defined(_MIPS_ARCH_MIPS32R6) &&   \
     !defined(USE_SIMULATOR)
       // Most significant fraction bit for quiet nan is set to 0
       // on MIPS architecture. Allowed by IEEE-754.
@@ -22920,58 +22918,33 @@ TEST(ScriptPositionInfo) {
   }
 }
 
-template <typename T>
-void CheckMagicComments(v8::Isolate* isolate, Local<T> unbound_script,
+void CheckMagicComments(v8::Isolate* isolate, Local<Script> script,
                         const char* expected_source_url,
                         const char* expected_source_mapping_url) {
   if (expected_source_url != nullptr) {
-    v8::String::Utf8Value url(isolate, unbound_script->GetSourceURL());
+    v8::String::Utf8Value url(isolate,
+                              script->GetUnboundScript()->GetSourceURL());
     CHECK_EQ(0, strcmp(expected_source_url, *url));
   } else {
-    CHECK(unbound_script->GetSourceURL()->IsUndefined());
+    CHECK(script->GetUnboundScript()->GetSourceURL()->IsUndefined());
   }
   if (expected_source_mapping_url != nullptr) {
-    v8::String::Utf8Value url(isolate, unbound_script->GetSourceMappingURL());
+    v8::String::Utf8Value url(
+        isolate, script->GetUnboundScript()->GetSourceMappingURL());
     CHECK_EQ(0, strcmp(expected_source_mapping_url, *url));
   } else {
-    CHECK(unbound_script->GetSourceMappingURL()->IsUndefined());
+    CHECK(script->GetUnboundScript()->GetSourceMappingURL()->IsUndefined());
   }
 }
 
-void SourceURLHelper(v8::Isolate* isolate, const char* source_text,
+void SourceURLHelper(v8::Isolate* isolate, const char* source,
                      const char* expected_source_url,
                      const char* expected_source_mapping_url) {
-  // Check scripts
-  {
-    Local<Script> script = v8_compile(source_text);
-    CheckMagicComments(isolate, script->GetUnboundScript(), expected_source_url,
-                       expected_source_mapping_url);
-  }
-
-  // Check modules
-  {
-    Local<v8::String> source_str = v8_str(source_text);
-    // Set a different resource name with the case above to invalidate the
-    // cache.
-    v8::ScriptOrigin origin(isolate,
-                            v8_str("module.js"),  // resource name
-                            0,                    // line offset
-                            0,                    // column offset
-                            true,                 // is cross origin
-                            -1,                   // script id
-                            Local<Value>(),       // source map URL
-                            false,                // is opaque
-                            false,                // is WASM
-                            true                  // is ES Module
-    );
-    v8::ScriptCompiler::Source source(source_str, origin, nullptr);
-
-    Local<v8::Module> module =
-        v8::ScriptCompiler::CompileModule(isolate, &source).ToLocalChecked();
-    CheckMagicComments(isolate, module->GetUnboundModuleScript(),
-                       expected_source_url, expected_source_mapping_url);
-  }
+  Local<Script> script = v8_compile(source);
+  CheckMagicComments(isolate, script, expected_source_url,
+                     expected_source_mapping_url);
 }
+
 
 TEST(ScriptSourceURLAndSourceMappingURL) {
   LocalContext env;
@@ -23270,8 +23243,8 @@ void RunStreamingTest(const char** chunks, v8::ScriptType type,
           script.ToLocalChecked()->Run(env.local()).ToLocalChecked());
       // All scripts are supposed to return the fixed value 13 when ran.
       CHECK_EQ(13, result->Int32Value(env.local()).FromJust());
-      CheckMagicComments(isolate, script.ToLocalChecked()->GetUnboundScript(),
-                         expected_source_url, expected_source_mapping_url);
+      CheckMagicComments(isolate, script.ToLocalChecked(), expected_source_url,
+                         expected_source_mapping_url);
     } else {
       CHECK(script.IsEmpty());
     }
@@ -27652,8 +27625,9 @@ struct BasicApiChecker {
   static Ret FastCallback(v8::Local<v8::Object> receiver, Value argument,
                           v8::FastApiCallbackOptions& options) {
     // TODO(mslekova): Refactor the data checking.
-    CHECK(options.data->IsNumber());
-    CHECK_EQ(Local<v8::Number>::Cast(options.data)->Value(), 42.5);
+    v8::Value* data = &(options.data);
+    CHECK(data->IsNumber());
+    CHECK_EQ(v8::Number::Cast(data)->Value(), 42.0);
     return Impl::FastCallback(receiver, argument, options);
   }
   static Ret FastCallbackNoFallback(v8::Local<v8::Object> receiver,
@@ -27885,7 +27859,7 @@ bool SetupTest(v8::Local<v8::Value> initial_value, LocalContext* env,
 
   Local<v8::FunctionTemplate> checker_templ = v8::FunctionTemplate::New(
       isolate, BasicApiChecker<Value, Impl, Ret>::SlowCallback,
-      v8::Number::New(isolate, 42.5), v8::Local<v8::Signature>(), 1,
+      v8::Number::New(isolate, 42), v8::Local<v8::Signature>(), 1,
       v8::ConstructorBehavior::kThrow, v8::SideEffectType::kHasSideEffect,
       &c_func);
   if (!accept_any_receiver) {

@@ -52,8 +52,8 @@ namespace internal {
 namespace heap {
 
 TEST(Promotion) {
-  if (v8_flags.single_generation) return;
-  v8_flags.stress_concurrent_allocation = false;  // For SealCurrentObjects.
+  if (FLAG_single_generation) return;
+  FLAG_stress_concurrent_allocation = false;  // For SealCurrentObjects.
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();
   {
@@ -108,8 +108,8 @@ AllocationResult HeapTester::AllocateFixedArrayForTest(
 }
 
 HEAP_TEST(MarkCompactCollector) {
-  v8_flags.incremental_marking = false;
-  v8_flags.retain_maps_for_n_gc = 0;
+  FLAG_incremental_marking = false;
+  FLAG_retain_maps_for_n_gc = 0;
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();
   Heap* heap = CcTest::heap();
@@ -122,7 +122,7 @@ HEAP_TEST(MarkCompactCollector) {
   CcTest::CollectGarbage(OLD_SPACE);
 
   AllocationResult allocation;
-  if (!v8_flags.single_generation) {
+  if (!FLAG_single_generation) {
     // keep allocating garbage in new space until it fails
     const int arraysize = 100;
     do {
@@ -183,9 +183,9 @@ HEAP_TEST(MarkCompactCollector) {
 }
 
 HEAP_TEST(DoNotEvacuatePinnedPages) {
-  if (!v8_flags.compact || !v8_flags.single_generation) return;
+  if (!FLAG_compact || !FLAG_single_generation) return;
 
-  v8_flags.compact_on_every_full_gc = true;
+  FLAG_compact_on_every_full_gc = true;
 
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();
@@ -313,7 +313,7 @@ static Handle<Map> CreateMap(Isolate* isolate) {
 }
 
 TEST(MapCompact) {
-  v8_flags.max_map_space_pages = 16;
+  FLAG_max_map_space_pages = 16;
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();
   Factory* factory = isolate->factory();
@@ -435,7 +435,7 @@ intptr_t ShortLivingIsolate() {
 
 UNINITIALIZED_TEST(RegressJoinThreadsOnIsolateDeinit) {
   // Memory is measured, do not allocate in background thread.
-  v8_flags.stress_concurrent_allocation = false;
+  FLAG_stress_concurrent_allocation = false;
   intptr_t size_limit = ShortLivingIsolate() * 2;
   for (int i = 0; i < 10; i++) {
     CHECK_GT(size_limit, ShortLivingIsolate());
@@ -443,8 +443,8 @@ UNINITIALIZED_TEST(RegressJoinThreadsOnIsolateDeinit) {
 }
 
 TEST(Regress5829) {
-  if (!v8_flags.incremental_marking) return;
-  v8_flags.stress_concurrent_allocation = false;  // For SealCurrentObjects.
+  if (!FLAG_incremental_marking) return;
+  FLAG_stress_concurrent_allocation = false;  // For SealCurrentObjects.
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();
   v8::HandleScope sc(CcTest::isolate());

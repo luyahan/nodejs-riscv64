@@ -121,8 +121,8 @@ void DecompressionAnalyzer::ProcessOperation(const Operation& op) {
       }
       break;
     }
-    case Opcode::kWordBinop: {
-      auto& binary_op = op.Cast<WordBinopOp>();
+    case Opcode::kBinop: {
+      auto& binary_op = op.Cast<BinopOp>();
       if (binary_op.rep == MachineRepresentation::kWord64) {
         MarkAsNeedsDecompression(binary_op.left());
         MarkAsNeedsDecompression(binary_op.right());

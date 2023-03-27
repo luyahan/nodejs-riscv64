@@ -5,7 +5,7 @@
 // Test specific cases of the lazy/eager-parse decision.
 //
 // Note that presently most unit tests for parsing are found in
-// parsing-unittest.cc.
+// cctest/test-parsing.cc.
 
 #include <unordered_map>
 

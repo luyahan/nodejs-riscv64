@@ -105,7 +105,6 @@ class StackHandler {
   V(EXIT, ExitFrame)                                                      \
   IF_WASM(V, WASM, WasmFrame)                                             \
   IF_WASM(V, WASM_TO_JS, WasmToJsFrame)                                   \
-  IF_WASM(V, WASM_TO_JS_FUNCTION, WasmToJsFunctionFrame)                  \
   IF_WASM(V, JS_TO_WASM, JsToWasmFrame)                                   \
   IF_WASM(V, STACK_SWITCH, StackSwitchFrame)                              \
   IF_WASM(V, WASM_DEBUG_BREAK, WasmDebugBreakFrame)                       \
@@ -237,9 +236,7 @@ class StackFrame {
   bool is_c_wasm_entry() const { return type() == C_WASM_ENTRY; }
   bool is_wasm_compile_lazy() const { return type() == WASM_COMPILE_LAZY; }
   bool is_wasm_debug_break() const { return type() == WASM_DEBUG_BREAK; }
-  bool is_wasm_to_js() const {
-    return type() == WASM_TO_JS || type() == WASM_TO_JS_FUNCTION;
-  }
+  bool is_wasm_to_js() const { return type() == WASM_TO_JS; }
   bool is_js_to_wasm() const { return type() == JS_TO_WASM; }
 #endif  // V8_ENABLE_WEBASSEMBLY
   bool is_builtin() const { return type() == BUILTIN; }
@@ -971,8 +968,6 @@ class MaglevFrame : public OptimizedFrame {
 
   int FindReturnPCForTrampoline(CodeT code, int trampoline_pc) const override;
 
-  BytecodeOffset GetBytecodeOffsetForOSR() const;
-
  protected:
   inline explicit MaglevFrame(StackFrameIteratorBase* iterator);
 
@@ -1103,17 +1098,6 @@ class WasmToJsFrame : public WasmFrame {
 
  protected:
   inline explicit WasmToJsFrame(StackFrameIteratorBase* iterator);
-
- private:
-  friend class StackFrameIteratorBase;
-};
-
-class WasmToJsFunctionFrame : public TypedFrame {
- public:
-  Type type() const override { return WASM_TO_JS_FUNCTION; }
-
- protected:
-  inline explicit WasmToJsFunctionFrame(StackFrameIteratorBase* iterator);
 
  private:
   friend class StackFrameIteratorBase;

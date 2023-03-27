@@ -87,8 +87,8 @@ const uint32_t kInternalizedTag = 0;
 //
 // TODO(v8:12007): This bit is currently ignored on internalized strings, which
 // are either always shared or always not shared depending on
-// v8_flags.shared_string_table. This will be hardcoded once
-// v8_flags.shared_string_table is removed.
+// FLAG_shared_string_table. This will be hardcoded once
+// FLAG_shared_string_table is removed.
 const uint32_t kSharedStringMask = 1 << 6;
 const uint32_t kSharedStringTag = 1 << 6;
 
@@ -148,13 +148,6 @@ enum InstanceType : uint16_t {
       kOneByteStringTag | kThinStringTag | kNotInternalizedTag,
   SHARED_STRING_TYPE = STRING_TYPE | kSharedStringTag,
   SHARED_ONE_BYTE_STRING_TYPE = ONE_BYTE_STRING_TYPE | kSharedStringTag,
-  SHARED_EXTERNAL_STRING_TYPE = EXTERNAL_STRING_TYPE | kSharedStringTag,
-  SHARED_EXTERNAL_ONE_BYTE_STRING_TYPE =
-      EXTERNAL_ONE_BYTE_STRING_TYPE | kSharedStringTag,
-  SHARED_UNCACHED_EXTERNAL_STRING_TYPE =
-      UNCACHED_EXTERNAL_STRING_TYPE | kSharedStringTag,
-  SHARED_UNCACHED_EXTERNAL_ONE_BYTE_STRING_TYPE =
-      UNCACHED_EXTERNAL_ONE_BYTE_STRING_TYPE | kSharedStringTag,
   SHARED_THIN_STRING_TYPE = THIN_STRING_TYPE | kSharedStringTag,
   SHARED_THIN_ONE_BYTE_STRING_TYPE =
       THIN_ONE_BYTE_STRING_TYPE | kSharedStringTag,

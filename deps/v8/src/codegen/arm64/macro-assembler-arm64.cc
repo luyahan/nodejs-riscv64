@@ -31,6 +31,7 @@
 // Satisfy cpplint check, but don't include platform-specific header. It is
 // included recursively via macro-assembler.h.
 #if 0
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/arm64/macro-assembler-arm64.h"
 #endif
 
@@ -1371,7 +1372,7 @@ void TailCallOptimizedCodeSlot(MacroAssembler* masm,
 
 #ifdef V8_ENABLE_DEBUG_CODE
 void MacroAssembler::AssertFeedbackVector(Register object, Register scratch) {
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     CompareObjectType(object, scratch, scratch, FEEDBACK_VECTOR_TYPE);
     Assert(eq, AbortReason::kExpectedFeedbackVector);
   }
@@ -1422,39 +1423,35 @@ void MacroAssembler::GenerateTailCallToReturnedCode(
   JumpCodeTObject(x2);
 }
 
-// Read off the flags in the feedback vector and check if there
+// Read off the optimization state in the feedback vector and check if there
 // is optimized code or a tiering state that needs to be processed.
-void MacroAssembler::LoadFeedbackVectorFlagsAndJumpIfNeedsProcessing(
-    Register flags, Register feedback_vector, CodeKind current_code_kind,
-    Label* flags_need_processing) {
+void MacroAssembler::LoadTieringStateAndJumpIfNeedsProcessing(
+    Register optimization_state, Register feedback_vector,
+    CodeKind current_code_kind, Label* has_optimized_code_or_state) {
   ASM_CODE_COMMENT(this);
-  DCHECK(!AreAliased(flags, feedback_vector));
+  DCHECK(!AreAliased(optimization_state, feedback_vector));
   DCHECK(CodeKindCanTierUp(current_code_kind));
-  Ldrh(flags, FieldMemOperand(feedback_vector, FeedbackVector::kFlagsOffset));
-  uint32_t kFlagsMask = FeedbackVector::kFlagsTieringStateIsAnyRequested |
-                        FeedbackVector::kFlagsMaybeHasTurbofanCode |
-                        FeedbackVector::kFlagsLogNextExecution;
-  if (current_code_kind != CodeKind::MAGLEV) {
-    kFlagsMask |= FeedbackVector::kFlagsMaybeHasMaglevCode;
-  }
-  TestAndBranchIfAnySet(flags, kFlagsMask, flags_need_processing);
+  Ldrh(optimization_state,
+       FieldMemOperand(feedback_vector, FeedbackVector::kFlagsOffset));
+  TestAndBranchIfAnySet(
+      optimization_state,
+      current_code_kind == CodeKind::MAGLEV
+          ? FeedbackVector::kHasTurbofanCodeOrTieringStateIsAnyRequestMask
+          : FeedbackVector::kHasAnyOptimizedCodeOrTieringStateIsAnyRequestMask,
+      has_optimized_code_or_state);
 }
 
 void MacroAssembler::MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(
-    Register flags, Register feedback_vector) {
+    Register optimization_state, Register feedback_vector) {
   ASM_CODE_COMMENT(this);
-  DCHECK(!AreAliased(flags, feedback_vector));
-  Label maybe_has_optimized_code, maybe_needs_logging;
+  DCHECK(!AreAliased(optimization_state, feedback_vector));
+  Label maybe_has_optimized_code;
   // Check if optimized code is available.
-  TestAndBranchIfAllClear(flags,
-                          FeedbackVector::kFlagsTieringStateIsAnyRequested,
-                          &maybe_needs_logging);
-  GenerateTailCallToReturnedCode(Runtime::kCompileOptimized);
-
-  bind(&maybe_needs_logging);
-  TestAndBranchIfAllClear(flags, FeedbackVector::LogNextExecutionBit::kMask,
+  TestAndBranchIfAllClear(optimization_state,
+                          FeedbackVector::kTieringStateIsAnyRequestMask,
                           &maybe_has_optimized_code);
-  GenerateTailCallToReturnedCode(Runtime::kFunctionLogNextExecution);
+
+  GenerateTailCallToReturnedCode(Runtime::kCompileOptimized);
 
   bind(&maybe_has_optimized_code);
   Register optimized_code_entry = x7;
@@ -1467,7 +1464,7 @@ void MacroAssembler::MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(
 
 #ifdef V8_ENABLE_DEBUG_CODE
 void TurboAssembler::AssertSpAligned() {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   HardAbortScope hard_abort(this);  // Avoid calls to Abort.
   // Arm64 requires the stack pointer to be 16-byte aligned prior to address
@@ -1480,7 +1477,7 @@ void TurboAssembler::AssertSpAligned() {
 }
 
 void TurboAssembler::AssertFPCRState(Register fpcr) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   Label unexpected_mode, done;
   UseScratchRegisterScope temps(this);
@@ -1504,7 +1501,7 @@ void TurboAssembler::AssertFPCRState(Register fpcr) {
 }
 
 void TurboAssembler::AssertSmi(Register object, AbortReason reason) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   static_assert(kSmiTag == 0);
   Tst(object, kSmiTagMask);
@@ -1512,7 +1509,7 @@ void TurboAssembler::AssertSmi(Register object, AbortReason reason) {
 }
 
 void MacroAssembler::AssertNotSmi(Register object, AbortReason reason) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   static_assert(kSmiTag == 0);
   Tst(object, kSmiTagMask);
@@ -1520,7 +1517,7 @@ void MacroAssembler::AssertNotSmi(Register object, AbortReason reason) {
 }
 
 void MacroAssembler::AssertCodeT(Register object) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   AssertNotSmi(object, AbortReason::kOperandIsNotACodeT);
 
@@ -1532,7 +1529,7 @@ void MacroAssembler::AssertCodeT(Register object) {
 }
 
 void MacroAssembler::AssertConstructor(Register object) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   AssertNotSmi(object, AbortReason::kOperandIsASmiAndNotAConstructor);
 
@@ -1547,7 +1544,7 @@ void MacroAssembler::AssertConstructor(Register object) {
 }
 
 void MacroAssembler::AssertFunction(Register object) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   AssertNotSmi(object, AbortReason::kOperandIsASmiAndNotAFunction);
 
@@ -1560,7 +1557,7 @@ void MacroAssembler::AssertFunction(Register object) {
 }
 
 void MacroAssembler::AssertCallableFunction(Register object) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   AssertNotSmi(object, AbortReason::kOperandIsASmiAndNotAFunction);
 
@@ -1573,7 +1570,7 @@ void MacroAssembler::AssertCallableFunction(Register object) {
 }
 
 void MacroAssembler::AssertBoundFunction(Register object) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   AssertNotSmi(object, AbortReason::kOperandIsASmiAndNotABoundFunction);
 
@@ -1585,7 +1582,7 @@ void MacroAssembler::AssertBoundFunction(Register object) {
 }
 
 void MacroAssembler::AssertGeneratorObject(Register object) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   AssertNotSmi(object, AbortReason::kOperandIsASmiAndNotAGeneratorObject);
 
@@ -1602,7 +1599,7 @@ void MacroAssembler::AssertGeneratorObject(Register object) {
 }
 
 void MacroAssembler::AssertUndefinedOrAllocationSite(Register object) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   UseScratchRegisterScope temps(this);
   Register scratch = temps.AcquireX();
@@ -1616,7 +1613,7 @@ void MacroAssembler::AssertUndefinedOrAllocationSite(Register object) {
 }
 
 void TurboAssembler::AssertPositiveOrZero(Register value) {
-  if (!v8_flags.debug_code) return;
+  if (!FLAG_debug_code) return;
   ASM_CODE_COMMENT(this);
   Label done;
   int sign_bit = value.Is64Bits() ? kXSignBit : kWSignBit;
@@ -1626,13 +1623,13 @@ void TurboAssembler::AssertPositiveOrZero(Register value) {
 }
 
 void TurboAssembler::Assert(Condition cond, AbortReason reason) {
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     Check(cond, reason);
   }
 }
 
 void TurboAssembler::AssertUnreachable(AbortReason reason) {
-  if (v8_flags.debug_code) Abort(reason);
+  if (FLAG_debug_code) Abort(reason);
 }
 #endif  // V8_ENABLE_DEBUG_CODE
 
@@ -1658,7 +1655,7 @@ void TurboAssembler::CopyDoubleWords(Register dst, Register src, Register count,
   ASM_CODE_COMMENT(this);
   DCHECK(!AreAliased(dst, src, count));
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     Register pointer1 = dst;
     Register pointer2 = src;
     if (mode == kSrcLessThanDst) {
@@ -1869,7 +1866,7 @@ int TurboAssembler::ActivationFrameAlignment() {
   // alignment. As the simulator is used to generate snapshots we do not know
   // if the target platform will need alignment, so this is controlled from a
   // flag.
-  return v8_flags.sim_stack_alignment;
+  return FLAG_sim_stack_alignment;
 #endif  // V8_HOST_ARCH_ARM64
 }
 
@@ -2036,6 +2033,8 @@ void TurboAssembler::JumpHelper(int64_t offset, RelocInfo::Mode rmode,
 
 // The calculated offset is either:
 // * the 'target' input unmodified if this is a Wasm call, or
+// * the offset of the target from the code range start, if this is a call to
+//   un-embedded builtin, or
 // * the offset of the target from the current PC, in instructions, for any
 //   other type of call.
 int64_t TurboAssembler::CalculateTargetOffset(Address target,
@@ -2046,7 +2045,18 @@ int64_t TurboAssembler::CalculateTargetOffset(Address target,
     // address at this point, and needs to be encoded as-is.
     return offset;
   }
-  offset -= reinterpret_cast<int64_t>(pc);
+  if (RelocInfo::IsRuntimeEntry(rmode)) {
+    // The runtime entry targets are used for generating short builtin calls
+    // from JIT-compiled code (it's not used during snapshot creation).
+    // The value is encoded as an offset from the code range (see
+    // Assembler::runtime_entry_at()).
+    // Note, that builtin-to-builitin calls use different OFF_HEAP_TARGET mode
+    // and therefore are encoded differently.
+    DCHECK_NE(options().code_range_base, 0);
+    offset -= static_cast<int64_t>(options().code_range_base);
+  } else {
+    offset -= reinterpret_cast<int64_t>(pc);
+  }
   DCHECK_EQ(offset % kInstrSize, 0);
   offset = offset / static_cast<int>(kInstrSize);
   return offset;
@@ -2184,7 +2194,7 @@ void TurboAssembler::CallBuiltin(Builtin builtin) {
       break;
     }
     case BuiltinCallJumpMode::kPCRelative:
-      near_call(static_cast<int>(builtin), RelocInfo::NEAR_BUILTIN_ENTRY);
+      Call(BuiltinEntry(builtin), RelocInfo::RUNTIME_ENTRY);
       break;
     case BuiltinCallJumpMode::kIndirect: {
       UseScratchRegisterScope temps(this);
@@ -2210,7 +2220,6 @@ void TurboAssembler::CallBuiltin(Builtin builtin) {
   }
 }
 
-// TODO(ishell): remove cond parameter from here to simplify things.
 void TurboAssembler::TailCallBuiltin(Builtin builtin, Condition cond) {
   ASM_CODE_COMMENT_STRING(this,
                           CommentForOffHeapTrampoline("tail call", builtin));
@@ -2232,15 +2241,9 @@ void TurboAssembler::TailCallBuiltin(Builtin builtin, Condition cond) {
       Jump(temp, cond);
       break;
     }
-    case BuiltinCallJumpMode::kPCRelative: {
-      if (cond != nv) {
-        Label done;
-        if (cond != al) B(NegateCondition(cond), &done);
-        near_jump(static_cast<int>(builtin), RelocInfo::NEAR_BUILTIN_ENTRY);
-        Bind(&done);
-      }
+    case BuiltinCallJumpMode::kPCRelative:
+      Jump(BuiltinEntry(builtin), RelocInfo::RUNTIME_ENTRY, cond);
       break;
-    }
     case BuiltinCallJumpMode::kIndirect: {
       LoadEntryFromBuiltin(builtin, temp);
       Jump(temp, cond);
@@ -2423,7 +2426,7 @@ void TurboAssembler::StoreReturnAddressAndCall(Register target) {
 #endif
   Poke(x17, 0);
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     ASM_CODE_COMMENT_STRING(this, "Verify fp[kSPOffset]-8");
     // Verify that the slot below fp[kSPOffset]-8 points to the signed return
     // location.
@@ -2845,35 +2848,59 @@ void TurboAssembler::Prologue() {
 void TurboAssembler::EnterFrame(StackFrame::Type type) {
   UseScratchRegisterScope temps(this);
 
-  if (StackFrame::IsJavaScript(type)) {
+  if (type == StackFrame::INTERNAL
+#if V8_ENABLE_WEBASSEMBLY
+      || type == StackFrame::WASM_DEBUG_BREAK
+#endif  // V8_ENABLE_WEBASSEMBLY
+  ) {
+    Register type_reg = temps.AcquireX();
+    Mov(type_reg, StackFrame::TypeToMarker(type));
+    Push<TurboAssembler::kSignLR>(lr, fp, type_reg, padreg);
+    const int kFrameSize =
+        TypedFrameConstants::kFixedFrameSizeFromFp + kSystemPointerSize;
+    Add(fp, sp, kFrameSize);
+    // sp[3] : lr
+    // sp[2] : fp
+    // sp[1] : type
+    // sp[0] : for alignment
+#if V8_ENABLE_WEBASSEMBLY
+  } else if (type == StackFrame::WASM ||
+             type == StackFrame::WASM_COMPILE_LAZY ||
+             type == StackFrame::WASM_EXIT) {
+    Register type_reg = temps.AcquireX();
+    Mov(type_reg, StackFrame::TypeToMarker(type));
+    Push<TurboAssembler::kSignLR>(lr, fp);
+    Mov(fp, sp);
+    Push(type_reg, kWasmInstanceRegister);
+    // sp[3] : lr
+    // sp[2] : fp
+    // sp[1] : type
+    // sp[0] : wasm instance
+#endif  // V8_ENABLE_WEBASSEMBLY
+  } else if (type == StackFrame::CONSTRUCT) {
+    Register type_reg = temps.AcquireX();
+    Mov(type_reg, StackFrame::TypeToMarker(type));
+
+    // Users of this frame type push a context pointer after the type field,
+    // so do it here to keep the stack pointer aligned.
+    Push<TurboAssembler::kSignLR>(lr, fp, type_reg, cp);
+
+    // The context pointer isn't part of the fixed frame, so add an extra slot
+    // to account for it.
+    Add(fp, sp,
+        TypedFrameConstants::kFixedFrameSizeFromFp + kSystemPointerSize);
+    // sp[3] : lr
+    // sp[2] : fp
+    // sp[1] : type
+    // sp[0] : cp
+  } else {
+    DCHECK(StackFrame::IsJavaScript(type));
     // Just push a minimal "machine frame", saving the frame pointer and return
     // address, without any markers.
     Push<TurboAssembler::kSignLR>(lr, fp);
     Mov(fp, sp);
     // sp[1] : lr
     // sp[0] : fp
-  } else {
-      Register type_reg = temps.AcquireX();
-      Mov(type_reg, StackFrame::TypeToMarker(type));
-      Register fourth_reg = no_reg;
-      if (type == StackFrame::CONSTRUCT) {
-        fourth_reg = cp;
-#if V8_ENABLE_WEBASSEMBLY
-      } else if (type == StackFrame::WASM ||
-                type == StackFrame::WASM_COMPILE_LAZY ||
-                type == StackFrame::WASM_EXIT) {
-        fourth_reg = kWasmInstanceRegister;
-#endif  // V8_ENABLE_WEBASSEMBLY
-      } else {
-        fourth_reg = padreg;
-      }
-      Push<TurboAssembler::kSignLR>(lr, fp, type_reg, fourth_reg);
-      static constexpr int kSPToFPDelta  = 2 * kSystemPointerSize;
-      Add(fp, sp, kSPToFPDelta);
-      // sp[3] : lr
-      // sp[2] : fp
-      // sp[1] : type
-      // sp[0] : cp | wasm instance | for alignment
   }
 }
 
@@ -2982,7 +3009,7 @@ void MacroAssembler::LeaveExitFrame(bool restore_doubles,
       ExternalReference::Create(IsolateAddressId::kContextAddress, isolate()));
   Ldr(cp, MemOperand(scratch));
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     // Also emit debug code to clear the cp in the top frame.
     Mov(scratch2, Operand(Context::kInvalidContext));
     Mov(scratch, ExternalReference::Create(IsolateAddressId::kContextAddress,
@@ -3021,7 +3048,7 @@ void MacroAssembler::EmitIncrementCounter(StatsCounter* counter, int value,
                                           Register scratch2) {
   ASM_CODE_COMMENT(this);
   DCHECK_NE(value, 0);
-  if (v8_flags.native_code_counters && counter->Enabled()) {
+  if (FLAG_native_code_counters && counter->Enabled()) {
     // This operation has to be exactly 32-bit wide in case the external
     // reference table redirects the counter to a uint32_t dummy_stats_counter_
     // field.
@@ -3176,7 +3203,7 @@ void TurboAssembler::DecompressTaggedSigned(const Register& destination,
                                             const MemOperand& field_operand) {
   ASM_CODE_COMMENT(this);
   Ldr(destination.W(), field_operand);
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     // Corrupt the top 32 bits. Made up of 16 fixed bits and 16 pc offset bits.
     Add(destination, destination,
         ((kDebugZapValue << 16) | (pc_offset() & 0xffff)) << 32);
@@ -3210,7 +3237,7 @@ void TurboAssembler::AtomicDecompressTaggedSigned(const Register& destination,
   ASM_CODE_COMMENT(this);
   Add(temp, base, index);
   Ldar(destination.W(), temp);
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     // Corrupt the top 32 bits. Made up of 16 fixed bits and 16 pc offset bits.
     Add(destination, destination,
         ((kDebugZapValue << 16) | (pc_offset() & 0xffff)) << 32);
@@ -3272,7 +3299,7 @@ void MacroAssembler::RecordWriteField(Register object, int offset,
   // of the object, so offset must be a multiple of kTaggedSize.
   DCHECK(IsAligned(offset, kTaggedSize));
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     ASM_CODE_COMMENT_STRING(this, "Verify slot_address");
     Label ok;
     UseScratchRegisterScope temps(this);
@@ -3480,7 +3507,7 @@ void MacroAssembler::RecordWrite(Register object, Operand offset,
   ASM_LOCATION_IN_ASSEMBLER("MacroAssembler::RecordWrite");
   DCHECK(!AreAliased(object, value));
 
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     ASM_CODE_COMMENT_STRING(this, "Verify slot_address");
     UseScratchRegisterScope temps(this);
     Register temp = temps.AcquireX();
@@ -3491,7 +3518,7 @@ void MacroAssembler::RecordWrite(Register object, Operand offset,
     Check(eq, AbortReason::kWrongAddressOrValuePassedToRecordWrite);
   }
 
-  if (v8_flags.disable_write_barriers) {
+  if (FLAG_disable_write_barriers) {
     return;
   }
 
@@ -3523,7 +3550,7 @@ void MacroAssembler::RecordWrite(Register object, Operand offset,
   if (lr_status == kLRHasNotBeenSaved) {
     Pop<TurboAssembler::kAuthLR>(lr, padreg);
   }
-  if (v8_flags.debug_code) Mov(slot_address, Operand(kZapValue));
+  if (FLAG_debug_code) Mov(slot_address, Operand(kZapValue));
 
   Bind(&done);
 }
@@ -3541,7 +3568,7 @@ void TurboAssembler::DebugBreak() { Debug("DebugBreak", 0, BREAK); }
 
 void TurboAssembler::Abort(AbortReason reason) {
   ASM_CODE_COMMENT(this);
-  if (v8_flags.code_comments) {
+  if (FLAG_code_comments) {
     RecordComment("Abort message: ");
     RecordComment(GetAbortReason(reason));
   }
@@ -3578,7 +3605,7 @@ void TurboAssembler::Abort(AbortReason reason) {
       // Generate an indirect call via builtins entry table here in order to
       // ensure that the interpreter_entry_return_pc_offset is the same for
       // InterpreterEntryTrampoline and InterpreterEntryTrampolineForProfiling
-      // when v8_flags.debug_code is enabled.
+      // when FLAG_debug_code is enabled.
       UseScratchRegisterScope temps(this);
       Register scratch = temps.AcquireX();
       LoadEntryFromBuiltin(Builtin::kAbort, scratch);

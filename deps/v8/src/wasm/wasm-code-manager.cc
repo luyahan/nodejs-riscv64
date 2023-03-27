@@ -13,7 +13,6 @@
 #include "src/base/iterator.h"
 #include "src/base/macros.h"
 #include "src/base/platform/platform.h"
-#include "src/base/platform/wrappers.h"
 #include "src/base/small-vector.h"
 #include "src/base/string-format.h"
 #include "src/base/vector.h"
@@ -43,6 +42,7 @@
 #include "src/wasm/wasm-objects.h"
 
 #if defined(V8_OS_WIN64)
+#include "src/base/platform/wrappers.h"
 #include "src/diagnostics/unwinding-info-win64.h"
 #endif  // V8_OS_WIN64
 
@@ -1884,11 +1884,6 @@ NativeModule::~NativeModule() {
   // {owned_code_}. The destructor of {WasmImportWrapperCache} still needs to
   // decrease reference counts on the {WasmCode} objects.
   import_wrapper_cache_.reset();
-
-  // If experimental PGO support is enabled, serialize the PGO data now.
-  if (V8_UNLIKELY(FLAG_experimental_wasm_pgo_to_file)) {
-    DumpProfileToFile(module_.get(), wire_bytes());
-  }
 }
 
 WasmCodeManager::WasmCodeManager()
@@ -2181,6 +2176,16 @@ bool WasmCodeManager::MemoryProtectionKeyWritable() {
 #else
   return false;
 #endif  // V8_HAS_PKU_JIT_WRITE_PROTECT
+}
+
+// static
+void WasmCodeManager::InitializeMemoryProtectionKeyPermissionsIfSupported() {
+  if (!HasMemoryProtectionKeySupport()) return;
+  // The default permission is {kDisableAccess}. Switch from that to
+  // {kDisableWrite}. Leave other permissions untouched, as the thread did
+  // already use the memory protection key in that case.
+  RwxMemoryWriteScope initialize_permission_scope(
+      "For initialization if PKU is in kNoAccess permission case.");
 }
 
 base::AddressRegion WasmCodeManager::AllocateAssemblerBufferSpace(int size) {

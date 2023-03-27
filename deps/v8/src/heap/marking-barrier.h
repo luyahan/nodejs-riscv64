@@ -45,10 +45,6 @@ class MarkingBarrier {
   // Returns true if the slot needs to be recorded.
   inline bool MarkValue(HeapObject host, HeapObject value);
 
-  bool is_minor() const {
-    return marking_barrier_type_ == MarkingBarrierType::kMinor;
-  }
-
  private:
   inline bool WhiteToGreyAndPush(HeapObject value);
 
@@ -65,6 +61,9 @@ class MarkingBarrier {
   template <typename TSlot>
   inline void MarkRange(HeapObject value, TSlot start, TSlot end);
 
+  bool is_minor() const {
+    return marking_barrier_type_ == MarkingBarrierType::kMinor;
+  }
   bool is_major() const {
     return marking_barrier_type_ == MarkingBarrierType::kMajor;
   }

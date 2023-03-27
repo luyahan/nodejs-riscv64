@@ -172,6 +172,8 @@ KNOWN_FAILURES = {
 
 # Flags that are already crashy during smoke tests should not be used.
 DISALLOWED_FLAGS = [
+  '--gdbjit',
+
   # TODO(https://crbug.com/1324097): Enable once maglev is more stable.
   '--maglev',
 
@@ -179,34 +181,9 @@ DISALLOWED_FLAGS = [
   '--multi-mapped-mock-allocator',
 ]
 
-# List pairs of flags that lead to contradictory cycles, i.e.:
-# A -> no-C and B -> C makes (A, B) contradictory.
-# No need to list other contradictions, they are omitted by the
-# --fuzzing flag).
-CONTRADICTORY_FLAGS = [
-  ('--always-turbofan', '--jitless'),
-  ('--assert-types', '--stress-concurrent-inlining'),
-]
-
 
 def filter_flags(flags):
-  """Drop disallowed and contradictory flags.
-
-  The precedence for contradictions is right to left, similar to the V8 test
-  framework.
-  """
-  result = []
-  flags_to_drop = set(DISALLOWED_FLAGS)
-  for flag in reversed(flags):
-    if flag in flags_to_drop:
-      continue
-    result.append(flag)
-    for contradicting_pair in CONTRADICTORY_FLAGS:
-      if contradicting_pair[0] == flag:
-        flags_to_drop.add(contradicting_pair[1])
-      if contradicting_pair[1] == flag:
-        flags_to_drop.add(contradicting_pair[0])
-  return list(reversed(result))
+  return [flag for flag in flags if flag not in DISALLOWED_FLAGS]
 
 
 def infer_arch(d8):
@@ -258,7 +235,7 @@ class ExecutionArgumentsConfig(object):
       d8 = os.path.join(BASE_PATH, d8)
     assert os.path.exists(d8)
 
-    flags = filter_flags(CONFIGS[config] + get('config_extra_flags'))
+    flags = CONFIGS[config] + filter_flags(get('config_extra_flags'))
 
     RunOptions = namedtuple('RunOptions', ['arch', 'config', 'd8', 'flags'])
     return RunOptions(infer_arch(d8), config, d8, flags)

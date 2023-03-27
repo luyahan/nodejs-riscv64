@@ -166,8 +166,24 @@ void WasmGlobalObject::SetF64(double value) {
   base::WriteUnalignedValue(address(), value);
 }
 
-void WasmGlobalObject::SetRef(Handle<Object> value) {
-  DCHECK(type().is_object_reference());
+void WasmGlobalObject::SetExternRef(Handle<Object> value) {
+  DCHECK(type().is_reference_to(wasm::HeapType::kExtern));
+  tagged_buffer().set(offset(), *value);
+}
+
+bool WasmGlobalObject::SetFuncRef(Isolate* isolate, Handle<Object> value) {
+  DCHECK_EQ(type(), wasm::kWasmFuncRef);
+  if (value->IsNull() ||
+      WasmInternalFunction::FromExternal(value, isolate).ToHandle(&value)) {
+    tagged_buffer().set(offset(), *value);
+    return true;
+  }
+  return false;
+}
+
+void WasmGlobalObject::SetStringRef(Handle<Object> value) {
+  DCHECK_EQ(type(), wasm::kWasmStringRef);
+  DCHECK(value->IsNull() || value->IsString());
   tagged_buffer().set(offset(), *value);
 }
 

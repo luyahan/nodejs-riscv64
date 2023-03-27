@@ -692,6 +692,8 @@ void LowLevelLogger::LogCodeInfo() {
   const char arch[] = "ppc";
 #elif V8_TARGET_ARCH_PPC64
   const char arch[] = "ppc64";
+#elif V8_TARGET_ARCH_MIPS
+  const char arch[] = "mips";
 #elif V8_TARGET_ARCH_LOONG64
   const char arch[] = "loong64";
 #elif V8_TARGET_ARCH_ARM64
@@ -1037,9 +1039,6 @@ class Ticker : public sampler::Sampler {
              perThreadData_->thread_id()) ||
          perThreadData_->thread_state() != nullptr))
       return;
-#if V8_HEAP_USE_PKU_JIT_WRITE_PROTECT
-    i::RwxMemoryWriteScope::SetDefaultPermissionsForSignalHandler();
-#endif
     TickSample sample;
     sample.Init(isolate, state, TickSample::kIncludeCEntryFrame, true);
     profiler_->Insert(&sample);
@@ -1288,7 +1287,6 @@ void V8FileLogger::LogSourceCodeInformation(Handle<AbstractCode> code,
   Script script = Script::cast(script_object);
   EnsureLogScriptSource(script);
 
-  if (!FLAG_log_source_position) return;
   MSG_BUILDER();
   msg << "code-source-info" << V8FileLogger::kNext
       << reinterpret_cast<void*>(code->InstructionStart(cage_base))
@@ -1427,7 +1425,7 @@ void V8FileLogger::CodeCreateEvent(CodeTag tag, Handle<AbstractCode> code,
 void V8FileLogger::FeedbackVectorEvent(FeedbackVector vector,
                                        AbstractCode code) {
   DisallowGarbageCollection no_gc;
-  if (!FLAG_log_feedback_vector) return;
+  if (!FLAG_log_code) return;
   PtrComprCageBase cage_base(isolate_);
   MSG_BUILDER();
   msg << "feedback-vector" << kNext << Time();
@@ -1673,7 +1671,7 @@ void AppendFunctionMessage(LogFile::MessageBuilder& msg, const char* reason,
 void V8FileLogger::FunctionEvent(const char* reason, int script_id,
                                  double time_delta, int start_position,
                                  int end_position, String function_name) {
-  if (!v8_flags.log_function_events) return;
+  if (!FLAG_log_function_events) return;
   MSG_BUILDER();
   AppendFunctionMessage(msg, reason, script_id, time_delta, start_position,
                         end_position, Time());
@@ -1686,7 +1684,7 @@ void V8FileLogger::FunctionEvent(const char* reason, int script_id,
                                  int end_position, const char* function_name,
                                  size_t function_name_length,
                                  bool is_one_byte) {
-  if (!v8_flags.log_function_events) return;
+  if (!FLAG_log_function_events) return;
   MSG_BUILDER();
   AppendFunctionMessage(msg, reason, script_id, time_delta, start_position,
                         end_position, Time());
@@ -1699,7 +1697,7 @@ void V8FileLogger::FunctionEvent(const char* reason, int script_id,
 void V8FileLogger::CompilationCacheEvent(const char* action,
                                          const char* cache_type,
                                          SharedFunctionInfo sfi) {
-  if (!v8_flags.log_function_events) return;
+  if (!FLAG_log_function_events) return;
   MSG_BUILDER();
   int script_id = -1;
   if (sfi.script().IsScript()) {
@@ -1713,7 +1711,7 @@ void V8FileLogger::CompilationCacheEvent(const char* action,
 }
 
 void V8FileLogger::ScriptEvent(ScriptEventType type, int script_id) {
-  if (!v8_flags.log_function_events) return;
+  if (!FLAG_log_function_events) return;
   MSG_BUILDER();
   msg << "script" << V8FileLogger::kNext;
   switch (type) {
@@ -1738,7 +1736,7 @@ void V8FileLogger::ScriptEvent(ScriptEventType type, int script_id) {
 }
 
 void V8FileLogger::ScriptDetails(Script script) {
-  if (!v8_flags.log_function_events) return;
+  if (!FLAG_log_function_events) return;
   {
     MSG_BUILDER();
     msg << "script-details" << V8FileLogger::kNext << script.id()
@@ -1757,7 +1755,6 @@ void V8FileLogger::ScriptDetails(Script script) {
 }
 
 bool V8FileLogger::EnsureLogScriptSource(Script script) {
-  if (!FLAG_log_source_code) return true;
   // Make sure the script is written to the log file.
   int script_id = script.id();
   if (logged_source_code_.find(script_id) != logged_source_code_.end()) {
@@ -2341,8 +2338,7 @@ void ExistingCodeLogger::LogCompiledFunctions() {
     // Can't use .is_identical_to() because AbstractCode might be both Code and
     // non-Code object and regular tagged comparison or compressed values might
     // not be correct when V8_EXTERNAL_CODE_SPACE is enabled.
-    if (*pair.second == ToAbstractCode(*BUILTIN_CODE(isolate_, CompileLazy)))
-      continue;
+    if (*pair.second == *BUILTIN_CODE(isolate_, CompileLazy)) continue;
     LogExistingFunction(pair.first, pair.second);
   }
 

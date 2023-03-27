@@ -7,6 +7,7 @@
 #include "src/base/iterator.h"
 #include "src/base/logging.h"
 #include "src/base/overflowing-math.h"
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/cpu-features.h"
 #include "src/codegen/machine-type.h"
 #include "src/compiler/backend/instruction-codes.h"
@@ -997,8 +998,7 @@ void VisitWord64Shift(InstructionSelector* selector, Node* node,
 
   if (g.CanBeImmediate(right)) {
     if (opcode == kX64Shr && m.left().IsChangeUint32ToUint64() &&
-        m.right().HasResolvedValue() && m.right().ResolvedValue() < 32 &&
-        m.right().ResolvedValue() >= 0) {
+        m.right().HasResolvedValue() && m.right().ResolvedValue() < 32) {
       opcode = kX64Shr32;
       left = left->InputAt(0);
     }
@@ -1657,8 +1657,6 @@ void InstructionSelector::VisitChangeInt32ToInt64(Node* node) {
         opcode = load_rep.IsSigned() ? kX64Movsxwq : kX64Movzxwq;
         break;
       case MachineRepresentation::kWord32:
-      case MachineRepresentation::kTaggedSigned:
-      case MachineRepresentation::kTagged:
         // ChangeInt32ToInt64 must interpret its input as a _signed_ 32-bit
         // integer, so here we must sign-extend the loaded value in any case.
         opcode = kX64Movsxlq;
@@ -4318,12 +4316,6 @@ void InstructionSelector::VisitF64x2PromoteLowF32x4(Node* node) {
   }
 
   VisitRR(this, node, code);
-}
-
-void InstructionSelector::VisitI16x8DotI8x16I7x16S(Node* node) {
-  X64OperandGenerator g(this);
-  Emit(kX64I16x8DotI8x16I7x16S, g.DefineAsRegister(node),
-       g.UseUniqueRegister(node->InputAt(0)), g.UseRegister(node->InputAt(1)));
 }
 
 void InstructionSelector::AddOutputToSelectContinuation(OperandGenerator* g,

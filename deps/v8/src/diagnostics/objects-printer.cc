@@ -280,10 +280,6 @@ void HeapObject::HeapObjectPrint(std::ostream& os) {
     case UNCACHED_EXTERNAL_ONE_BYTE_STRING_TYPE:
     case SHARED_STRING_TYPE:
     case SHARED_ONE_BYTE_STRING_TYPE:
-    case SHARED_EXTERNAL_STRING_TYPE:
-    case SHARED_EXTERNAL_ONE_BYTE_STRING_TYPE:
-    case SHARED_UNCACHED_EXTERNAL_STRING_TYPE:
-    case SHARED_UNCACHED_EXTERNAL_ONE_BYTE_STRING_TYPE:
     case SHARED_THIN_STRING_TYPE:
     case SHARED_THIN_ONE_BYTE_STRING_TYPE:
     case JS_LAST_DUMMY_API_OBJECT_TYPE:
@@ -1265,6 +1261,9 @@ void FeedbackNexus::Print(std::ostream& os) {
     case FeedbackSlotKind::kDefineKeyedOwn:
     case FeedbackSlotKind::kHasKeyed:
     case FeedbackSlotKind::kInstanceOf:
+    case FeedbackSlotKind::kLoadGlobalInsideTypeof:
+    case FeedbackSlotKind::kLoadGlobalNotInsideTypeof:
+    case FeedbackSlotKind::kLoadKeyed:
     case FeedbackSlotKind::kDefineKeyedOwnPropertyInLiteral:
     case FeedbackSlotKind::kStoreGlobalSloppy:
     case FeedbackSlotKind::kStoreGlobalStrict:
@@ -1277,20 +1276,6 @@ void FeedbackNexus::Print(std::ostream& os) {
       os << InlineCacheState2String(ic_state());
       break;
     }
-    case FeedbackSlotKind::kLoadGlobalInsideTypeof:
-    case FeedbackSlotKind::kLoadGlobalNotInsideTypeof: {
-      os << InlineCacheState2String(ic_state());
-      if (ic_state() == InlineCacheState::MONOMORPHIC) {
-        os << "\n   ";
-        if (GetFeedback().GetHeapObjectOrSmi().IsPropertyCell()) {
-          os << Brief(GetFeedback());
-        } else {
-          LoadHandler::PrintHandler(GetFeedback().GetHeapObjectOrSmi(), os);
-        }
-      }
-      break;
-    }
-    case FeedbackSlotKind::kLoadKeyed:
     case FeedbackSlotKind::kLoadProperty: {
       os << InlineCacheState2String(ic_state());
       if (ic_state() == InlineCacheState::MONOMORPHIC) {
@@ -1973,39 +1958,13 @@ void WasmArray::WasmArrayPrint(std::ostream& os) {
       PrintTypedArrayElements(os, reinterpret_cast<int16_t*>(data_ptr), len,
                               true);
       break;
+    case wasm::kS128:
     case wasm::kRef:
-    case wasm::kRefNull: {
-      os << "\n - elements:";
-      constexpr uint32_t kWasmArrayMaximumPrintedElements = 5;
-      for (uint32_t i = 0;
-           i < std::min(this->length(), kWasmArrayMaximumPrintedElements);
-           i++) {
-        os << "\n   " << static_cast<int>(i) << " - "
-           << Brief(TaggedField<Object>::load(*this, this->element_offset(i)));
-      }
-      if (this->length() > kWasmArrayMaximumPrintedElements) os << "\n   ...";
-      break;
-    }
-    case wasm::kS128: {
-      os << "\n - elements:";
-      constexpr uint32_t kWasmArrayMaximumPrintedElements = 5;
-      for (uint32_t i = 0;
-           i < std::min(this->length(), kWasmArrayMaximumPrintedElements);
-           i++) {
-        os << "\n   " << static_cast<int>(i) << " - 0x" << std::hex;
-#ifdef V8_TARGET_BIG_ENDIAN
-        for (int j = 0; j < kSimd128Size; j++) {
-#else
-        for (int j = kSimd128Size - 1; j >= 0; j--) {
-#endif
-          os << reinterpret_cast<byte*>(this->ElementAddress(i))[j];
-        }
-        os << std::dec;
-      }
-      if (this->length() > kWasmArrayMaximumPrintedElements) os << "\n   ...";
-      break;
-    }
+    case wasm::kRefNull:
     case wasm::kRtt:
+      os << "\n   Printing elements of this type is unimplemented, sorry";
+      // TODO(7748): Implement.
+      break;
     case wasm::kBottom:
     case wasm::kVoid:
       UNREACHABLE();
@@ -2599,6 +2558,31 @@ void PreparseData::PreparseDataPrint(std::ostream& os) {
   os << "\n";
 }
 
+template <HeapObjectReferenceType kRefType, typename StorageType>
+void TaggedImpl<kRefType, StorageType>::Print() {
+  StdoutStream os;
+  this->Print(os);
+  os << std::flush;
+}
+
+template <HeapObjectReferenceType kRefType, typename StorageType>
+void TaggedImpl<kRefType, StorageType>::Print(std::ostream& os) {
+  Smi smi;
+  HeapObject heap_object;
+  if (ToSmi(&smi)) {
+    smi.SmiPrint(os);
+  } else if (IsCleared()) {
+    os << "[cleared]";
+  } else if (GetHeapObjectIfWeak(&heap_object)) {
+    os << "[weak] ";
+    heap_object.HeapObjectPrint(os);
+  } else if (GetHeapObjectIfStrong(&heap_object)) {
+    heap_object.HeapObjectPrint(os);
+  } else {
+    UNREACHABLE();
+  }
+}
+
 void HeapNumber::HeapNumberPrint(std::ostream& os) {
   HeapNumberShortPrint(os);
   os << "\n";
@@ -2710,8 +2694,7 @@ void Map::MapPrint(std::ostream& os) {
   } else {
     os << "\n - back pointer: " << Brief(GetBackPointer());
   }
-  os << "\n - prototype_validity cell: "
-     << Brief(prototype_validity_cell(kRelaxedLoad));
+  os << "\n - prototype_validity cell: " << Brief(prototype_validity_cell());
   os << "\n - instance descriptors " << (owns_descriptors() ? "(own) " : "")
      << "#" << NumberOfOwnDescriptors() << ": "
      << Brief(instance_descriptors());

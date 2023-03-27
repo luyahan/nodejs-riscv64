@@ -379,7 +379,8 @@ TEST_F(EmbedderTracingTest, V8RegisterEmbedderReference) {
   v8::Local<v8::Object> api_object = ConstructTraceableJSApiObject(
       context, first_and_second_field, first_and_second_field);
   ASSERT_FALSE(api_object.IsEmpty());
-  CollectGarbage(i::OLD_SPACE);
+  i_isolate()->heap()->CollectGarbage(i::OLD_SPACE,
+                                      GarbageCollectionReason::kTesting);
   EXPECT_TRUE(tracer.IsRegisteredFromV8(first_and_second_field));
 }
 
@@ -401,7 +402,8 @@ TEST_F(EmbedderTracingTest, EmbedderRegisteringV8Reference) {
     handle->Reset(v8_isolate(), o);
   }
   tracer.AddReferenceForTracing(handle.get());
-  CollectGarbage(i::OLD_SPACE);
+  i_isolate()->heap()->CollectGarbage(i::OLD_SPACE,
+                                      GarbageCollectionReason::kTesting);
   EXPECT_FALSE(handle->IsEmpty());
 }
 
@@ -429,7 +431,8 @@ TEST_F(EmbedderTracingTest, TracingInEphemerons) {
     int32_t hash = js_key->GetOrCreateHash(i_isolate()).value();
     JSWeakCollection::Set(weak_map, js_key, js_api_object, hash);
   }
-  CollectGarbage(i::OLD_SPACE);
+  i_isolate()->heap()->CollectGarbage(i::OLD_SPACE,
+                                      GarbageCollectionReason::kTesting);
   EXPECT_TRUE(tracer.IsRegisteredFromV8(first_and_second_field));
 }
 
@@ -439,7 +442,8 @@ TEST_F(EmbedderTracingTest, FinalizeTracingIsNoopWhenNotMarking) {
   heap::TemporaryEmbedderHeapTracerScope tracer_scope(v8_isolate(), &tracer);
 
   // Finalize a potentially running garbage collection.
-  CollectGarbage(OLD_SPACE);
+  i_isolate()->heap()->CollectGarbage(OLD_SPACE,
+                                      GarbageCollectionReason::kTesting);
   EXPECT_TRUE(i_isolate()->heap()->incremental_marking()->IsStopped());
 
   int gc_counter = i_isolate()->heap()->gc_count();
@@ -449,14 +453,14 @@ TEST_F(EmbedderTracingTest, FinalizeTracingIsNoopWhenNotMarking) {
 }
 
 TEST_F(EmbedderTracingTest, FinalizeTracingWhenMarking) {
-  if (!v8_flags.incremental_marking) return;
+  if (!FLAG_incremental_marking) return;
   ManualGCScope manual_gc(i_isolate());
   Heap* heap = i_isolate()->heap();
   TestEmbedderHeapTracer tracer;
   heap::TemporaryEmbedderHeapTracerScope tracer_scope(v8_isolate(), &tracer);
 
   // Finalize a potentially running garbage collection.
-  CollectGarbage(OLD_SPACE);
+  heap->CollectGarbage(OLD_SPACE, GarbageCollectionReason::kTesting);
   if (heap->mark_compact_collector()->sweeping_in_progress()) {
     heap->mark_compact_collector()->EnsureSweepingCompleted(
         MarkCompactCollector::SweepingForcedFinalizationMode::kV8Only);
@@ -580,7 +584,7 @@ TEST_F(EmbedderTracingTest, TracedReferenceCopyReferences) {
 TEST_F(EmbedderTracingTest, TracedReferenceToUnmodifiedJSObjectDiesOnFullGC) {
   // When stressing incremental marking, a write barrier may keep the object
   // alive.
-  if (v8_flags.stress_incremental_marking) return;
+  if (FLAG_stress_incremental_marking) return;
 
   TracedReferenceTest(
       v8_isolate(), ConstructJSObject,
@@ -611,7 +615,7 @@ TEST_F(
 
 TEST_F(EmbedderTracingTest,
        TracedReferenceToUnmodifiedJSObjectSurvivesYoungGC) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
   ManualGCScope manual_gc(i_isolate());
   TracedReferenceTest(
       v8_isolate(), ConstructJSObject,
@@ -622,7 +626,7 @@ TEST_F(EmbedderTracingTest,
 TEST_F(
     EmbedderTracingTest,
     TracedReferenceToUnmodifiedJSObjectSurvivesYoungGCWhenExcludedFromRoots) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
   ManualGCScope manual_gc(i_isolate());
   TestEmbedderHeapTracer tracer;
   heap::TemporaryEmbedderHeapTracerScope tracer_scope(v8_isolate(), &tracer);
@@ -636,7 +640,7 @@ TEST_F(
 
 TEST_F(EmbedderTracingTest,
        TracedReferenceToUnmodifiedJSApiObjectSurvivesScavengePerDefault) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
   ManualGCScope manual_gc(i_isolate());
   TestEmbedderHeapTracer tracer;
   heap::TemporaryEmbedderHeapTracerScope tracer_scope(v8_isolate(), &tracer);
@@ -649,7 +653,7 @@ TEST_F(EmbedderTracingTest,
 TEST_F(
     EmbedderTracingTest,
     TracedReferenceToUnmodifiedJSApiObjectDiesOnScavengeWhenExcludedFromRoots) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
   ManualGCScope manual_gc(i_isolate());
   TestEmbedderHeapTracer tracer;
   heap::TemporaryEmbedderHeapTracerScope tracer_scope(v8_isolate(), &tracer);
@@ -687,17 +691,7 @@ TEST_F(EmbedderTracingTest, TracedReferenceHandlesMarking) {
     heap::TemporaryEmbedderHeapTracerScope tracer_scope(v8_isolate(), &tracer);
     tracer.AddReferenceForTracing(live.get());
     const size_t initial_count = global_handles->handles_count();
-    {
-      // Conservative scanning may find stale pointers to on-stack handles.
-      // Disable scanning, assuming the slots are overwritten.
-      EmbedderStackStateScope scope =
-          EmbedderStackStateScope::ExplicitScopeForTesting(
-              reinterpret_cast<i::Isolate*>(v8_isolate())
-                  ->heap()
-                  ->local_embedder_heap_tracer(),
-              EmbedderHeapTracer::EmbedderStackState::kNoHeapPointers);
-      FullGC();
-    }
+    FullGC();
     const size_t final_count = global_handles->handles_count();
     // Handles are not black allocated, so `dead` is immediately reclaimed.
     EXPECT_EQ(initial_count, final_count + 1);
@@ -767,7 +761,7 @@ TEST_F(EmbedderTracingTest, TracedReferenceIteration) {
 
 TEST_F(EmbedderTracingTest, TracePrologueCallingIntoV8WriteBarrier) {
   // Regression test: https://crbug.com/940003
-  if (!v8_flags.incremental_marking) return;
+  if (!FLAG_incremental_marking) return;
   ManualGCScope manual_gc(isolate());
   v8::HandleScope scope(v8_isolate());
   v8::Global<v8::Array> global;
@@ -896,7 +890,7 @@ void SetupOptimizedAndNonOptimizedHandle(v8::Isolate* isolate,
 }  // namespace
 
 TEST_F(EmbedderTracingTest, TracedReferenceNoDestructorReclaimedOnScavenge) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
   ManualGCScope manual_gc(i_isolate());
   v8::HandleScope scope(v8_isolate());
   constexpr uint16_t kClassIdToOptimize = 23;
@@ -990,7 +984,7 @@ V8_NOINLINE void StackToHeapTest(v8::Isolate* v8_isolate,
         v8_isolate->GetCurrentContext(), nullptr, nullptr));
     EXPECT_TRUE(
         IsNewObjectInCorrectGeneration(*v8::Utils::OpenHandle(*to_object)));
-    if (!v8_flags.single_generation &&
+    if (!FLAG_single_generation &&
         target_handling == TargetHandling::kInitializedOldGen) {
       FullGC(v8_isolate);
       EXPECT_FALSE(
@@ -1042,7 +1036,7 @@ V8_NOINLINE void HeapToStackTest(v8::Isolate* v8_isolate,
         v8_isolate->GetCurrentContext(), nullptr, nullptr));
     EXPECT_TRUE(
         IsNewObjectInCorrectGeneration(*v8::Utils::OpenHandle(*to_object)));
-    if (!v8_flags.single_generation &&
+    if (!FLAG_single_generation &&
         target_handling == TargetHandling::kInitializedOldGen) {
       FullGC(v8_isolate);
       EXPECT_FALSE(
@@ -1083,7 +1077,7 @@ V8_NOINLINE void StackToStackTest(v8::Isolate* v8_isolate,
         v8_isolate->GetCurrentContext(), nullptr, nullptr));
     EXPECT_TRUE(
         IsNewObjectInCorrectGeneration(*v8::Utils::OpenHandle(*to_object)));
-    if (!v8_flags.single_generation &&
+    if (!FLAG_single_generation &&
         target_handling == TargetHandling::kInitializedOldGen) {
       FullGC(v8_isolate);
       EXPECT_FALSE(

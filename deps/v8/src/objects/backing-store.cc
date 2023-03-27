@@ -6,6 +6,7 @@
 
 #include <cstring>
 
+#include "src/base/platform/wrappers.h"
 #include "src/execution/isolate.h"
 #include "src/handles/global-handles.h"
 #include "src/logging/counters.h"
@@ -19,9 +20,9 @@
 #include "src/wasm/wasm-objects-inl.h"
 #endif  // V8_ENABLE_WEBASSEMBLY
 
-#define TRACE_BS(...)                                      \
-  do {                                                     \
-    if (v8_flags.trace_backing_store) PrintF(__VA_ARGS__); \
+#define TRACE_BS(...)                                  \
+  do {                                                 \
+    if (FLAG_trace_backing_store) PrintF(__VA_ARGS__); \
   } while (false)
 
 namespace v8 {
@@ -265,7 +266,7 @@ std::unique_ptr<BackingStore> BackingStore::Allocate(
         constexpr bool
             kDebugCheckZeroDisabledDueToNodeNotImplementingZeroInitAPI = true;
         if ((!(kDebugCheckZeroDisabledDueToNodeNotImplementingZeroInitAPI)) &&
-            !v8_flags.mock_arraybuffer_allocator) {
+            !FLAG_mock_arraybuffer_allocator) {
           DebugCheckZero(buffer_start, byte_length);
         }
       }

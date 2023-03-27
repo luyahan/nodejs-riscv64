@@ -23,7 +23,6 @@
 #include "src/heap/read-only-heap.h"
 #include "src/heap/safepoint.h"
 #include "src/heap/spaces.h"
-#include "src/heap/sweeper.h"
 #include "src/logging/runtime-call-stats-scope.h"
 #include "src/objects/string.h"
 #include "src/utils/utils.h"
@@ -139,17 +138,17 @@ void PagedSpaceBase::TearDown() {
   accounting_stats_.Clear();
 }
 
-void PagedSpaceBase::RefillFreeList(Sweeper* sweeper) {
+void PagedSpaceBase::RefillFreeList() {
   // Any PagedSpace might invoke RefillFreeList. We filter all but our old
   // generation spaces out.
   DCHECK(identity() == OLD_SPACE || identity() == CODE_SPACE ||
          identity() == MAP_SPACE || identity() == NEW_SPACE);
-
+  MarkCompactCollector* collector = heap()->mark_compact_collector();
   size_t added = 0;
 
   {
     Page* p = nullptr;
-    while ((p = sweeper->GetSweptPageSafe(this)) != nullptr) {
+    while ((p = collector->sweeper()->GetSweptPageSafe(this)) != nullptr) {
       // We regularly sweep NEVER_ALLOCATE_ON_PAGE pages. We drop the freelist
       // entries here to make them unavailable for allocations.
       if (p->IsFlagSet(Page::NEVER_ALLOCATE_ON_PAGE)) {
@@ -163,7 +162,6 @@ void PagedSpaceBase::RefillFreeList(Sweeper* sweeper) {
       // during compaction.
       if (is_compaction_space()) {
         DCHECK_NE(this, p->owner());
-        DCHECK_NE(NEW_SPACE, identity());
         PagedSpaceBase* owner = reinterpret_cast<PagedSpaceBase*>(p->owner());
         base::MutexGuard guard(owner->mutex());
         owner->RefineAllocatedBytesAfterSweeping(p);
@@ -284,7 +282,7 @@ bool PagedSpaceBase::ContainsSlow(Address addr) const {
 void PagedSpaceBase::RefineAllocatedBytesAfterSweeping(Page* page) {
   CHECK(page->SweepingDone());
   auto marking_state =
-      heap()->mark_compact_collector()->non_atomic_marking_state();
+      heap()->incremental_marking()->non_atomic_marking_state();
   // The live_byte on the page was accounted in the space allocated
   // bytes counter. After sweeping allocated_bytes() contains the
   // accurate live byte count on the page.
@@ -331,13 +329,7 @@ void PagedSpaceBase::RemovePage(Page* page) {
   if (identity() == NEW_SPACE) {
     page->ReleaseFreeListCategories();
   }
-  // Pages are only removed from new space when they are promoted to old space
-  // during a GC. This happens after sweeping as started and the allocation
-  // counters have been reset.
-  DCHECK_IMPLIES(identity() == NEW_SPACE, Size() == 0);
-  if (identity() != NEW_SPACE) {
-    DecreaseAllocatedBytes(page->allocated_bytes(), page);
-  }
+  DecreaseAllocatedBytes(page->allocated_bytes(), page);
   DecreaseCapacity(page->area_size());
   AccountUncommitted(page->size());
   for (size_t i = 0; i < ExternalBackingStoreType::kNumTypes; i++) {
@@ -670,7 +662,7 @@ PagedSpaceBase::RawAllocateBackground(LocalHeap* local_heap,
   if (collector->sweeping_in_progress()) {
     // First try to refill the free-list, concurrent sweeper threads
     // may have freed some objects in the meantime.
-    RefillFreeList(collector->sweeper());
+    RefillFreeList();
 
     // Retry the free list allocation.
     result = TryAllocationFromFreeListBackground(min_size_in_bytes,
@@ -685,8 +677,7 @@ PagedSpaceBase::RawAllocateBackground(LocalHeap* local_heap,
           identity(), Sweeper::SweepingMode::kLazyOrConcurrent,
           static_cast<int>(min_size_in_bytes), kMaxPagesToSweep);
 
-      // Keep new space sweeping atomic.
-      RefillFreeList(collector->sweeper());
+      RefillFreeList();
 
       if (static_cast<size_t>(max_freed) >= min_size_in_bytes) {
         result = TryAllocationFromFreeListBackground(min_size_in_bytes,
@@ -708,7 +699,7 @@ PagedSpaceBase::RawAllocateBackground(LocalHeap* local_heap,
       collector->DrainSweepingWorklistForSpace(identity());
     }
 
-    RefillFreeList(collector->sweeper());
+    RefillFreeList();
 
     // Last try to acquire memory from free list.
     return TryAllocationFromFreeListBackground(min_size_in_bytes,
@@ -817,7 +808,7 @@ void PagedSpaceBase::Verify(Isolate* isolate, ObjectVisitor* visitor) const {
       // The object itself should look OK.
       object.ObjectVerify(isolate);
 
-      if (identity() != RO_SPACE && !v8_flags.verify_heap_skip_remembered_set) {
+      if (identity() != RO_SPACE && !FLAG_verify_heap_skip_remembered_set) {
         HeapVerifier::VerifyRememberedSetFor(isolate->heap(), object);
       }
 
@@ -854,7 +845,7 @@ void PagedSpaceBase::Verify(Isolate* isolate, ObjectVisitor* visitor) const {
   }
   CHECK(allocation_pointer_found_in_space);
 
-  if (identity() == OLD_SPACE && !v8_flags.concurrent_array_buffer_sweeping) {
+  if (identity() == OLD_SPACE && !FLAG_concurrent_array_buffer_sweeping) {
     size_t bytes = heap()->array_buffer_sweeper()->old().BytesSlow();
     CHECK_EQ(bytes,
              ExternalBackingStoreBytes(ExternalBackingStoreType::kArrayBuffer));
@@ -994,7 +985,7 @@ bool PagedSpaceBase::RawRefillLabMain(int size_in_bytes,
   if (collector->sweeping_in_progress()) {
     // First try to refill the free-list, concurrent sweeper threads
     // may have freed some objects in the meantime.
-    RefillFreeList(collector->sweeper());
+    RefillFreeList();
 
     // Retry the free list allocation.
     if (TryAllocationFromFreeListMain(static_cast<size_t>(size_in_bytes),
@@ -1058,7 +1049,7 @@ bool PagedSpaceBase::ContributeToSweepingMain(int required_freed_bytes,
   if (collector->sweeping_in_progress()) {
     collector->sweeper()->ParallelSweepSpace(identity(), sweeping_mode,
                                              required_freed_bytes, max_pages);
-    RefillFreeList(collector->sweeper());
+    RefillFreeList();
     return TryAllocationFromFreeListMain(size_in_bytes, origin);
   }
   return false;
@@ -1084,27 +1075,6 @@ void PagedSpaceBase::ReduceActiveSystemPages(
       page->active_system_pages()->Reduce(active_system_pages);
   DecrementCommittedPhysicalMemory(reduced_pages *
                                    MemoryAllocator::GetCommitPageSize());
-}
-
-void PagedSpaceBase::UnlinkFreeListCategories(Page* page) {
-  DCHECK_EQ(this, page->owner());
-  page->ForAllFreeListCategories([this](FreeListCategory* category) {
-    free_list()->RemoveCategory(category);
-  });
-}
-
-size_t PagedSpaceBase::RelinkFreeListCategories(Page* page) {
-  DCHECK_EQ(this, page->owner());
-  size_t added = 0;
-  page->ForAllFreeListCategories([this, &added](FreeListCategory* category) {
-    added += category->available();
-    category->Relink(free_list());
-  });
-
-  DCHECK_IMPLIES(!page->IsFlagSet(Page::NEVER_ALLOCATE_ON_PAGE),
-                 page->AvailableInFreeList() ==
-                     page->AvailableInFreeListFromAllocatedBytes());
-  return added;
 }
 
 // -----------------------------------------------------------------------------

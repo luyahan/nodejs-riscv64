@@ -19,56 +19,52 @@ let codeKinds = [
     "STUB",
     "BUILTIN",
     "REGEXP",
-    "JS_IGNITION",
-    "JS_SPARKPLUG",
-    "JS_MAGLEV",
-    "JS_TURBOFAN",
+    "JS_OPT",
+    "JS_UNOPT",
+    "JS_TURBOPROP",
+    "JS_BASELINE",
 ];
 
 function resolveCodeKind(code) {
   if (!code || !code.type) {
     return "UNKNOWN";
-  }
-  const type = code.type;
-  if (type === "CPP") {
+  } else if (code.type === "CPP") {
     return "CPP";
-  } else if (type === "SHARED_LIB") {
+  } else if (code.type === "SHARED_LIB") {
     return "LIB";
-  }
-  const kind = code.kind;
-  if (type === "CODE") {
-    if (kind === "LoadIC" ||
-        kind === "StoreIC" ||
-        kind === "KeyedStoreIC" ||
-        kind === "KeyedLoadIC" ||
-        kind === "LoadGlobalIC" ||
-        kind === "Handler") {
+  } else if (code.type === "CODE") {
+    if (code.kind === "LoadIC" ||
+        code.kind === "StoreIC" ||
+        code.kind === "KeyedStoreIC" ||
+        code.kind === "KeyedLoadIC" ||
+        code.kind === "LoadGlobalIC" ||
+        code.kind === "Handler") {
       return "IC";
-    } else if (kind === "BytecodeHandler") {
+    } else if (code.kind === "BytecodeHandler") {
       return "BC";
-    } else if (kind === "Stub") {
+    } else if (code.kind === "Stub") {
       return "STUB";
-    } else if (kind === "Builtin") {
+    } else if (code.kind === "Builtin") {
       return "BUILTIN";
-    } else if (kind === "RegExp") {
+    } else if (code.kind === "RegExp") {
       return "REGEXP";
     }
-    console.warn("Unknown CODE: '" + kind + "'.");
+    console.log("Unknown CODE: '" + code.kind + "'.");
     return "CODE";
-  } else if (type === "JS") {
-    if (kind === "Builtin" || kind == "Ignition" || kind === "Unopt") {
-      return "JS_IGNITION";
-    } else if (kind === "Baseline" || kind === "Sparkplug") {
-      return "JS_SPARKPLUG";
-    } else if (kind === "Maglev") {
-      return "JS_MAGLEV";
-    } else if (kind === "Turboprop") {
+  } else if (code.type === "JS") {
+    if (code.kind === "Builtin") {
+      return "JS_UNOPT";
+    } else if (code.kind === "Opt") {
+      return "JS_OPT";
+    } else if (code.kind === "Unopt") {
+      return "JS_UNOPT";
+    } else if (code.kind === "Baseline") {
+      return "JS_BASELINE";
+    } else if (code.kind === "Turboprop") {
       return "JS_TURBOPROP";
-    } else if (kind === "Opt" || kind === "Turbofan") {
-      return "JS_TURBOFAN";
     }
   }
-  console.warn("Unknown code type '" + kind + "'.");
+  console.log("Unknown code type '" + type + "'.");
 }
 
 function resolveCodeKindAndVmState(code, vmState) {
@@ -275,10 +271,10 @@ function buildCategoryTreeAndLookup() {
     }
     root.children.push(n);
   }
-  addCategory("JS Ignition", [ "JS_IGNITION", "BC" ]);
-  addCategory("JS Sparkplug", [ "JS_SPARKPLUG" ]);
-  addCategory("JS Maglev", [ "JS_MAGLEV" ]);
-  addCategory("JS Turbofan", [ "JS_TURBOFAN" ]);
+  addCategory("JS Optimized", [ "JS_OPT" ]);
+  addCategory("JS Turboprop", [ "JS_TURBOPROP" ]);
+  addCategory("JS Baseline", [ "JS_BASELINE" ]);
+  addCategory("JS Unoptimized", [ "JS_UNOPT", "BC" ]);
   addCategory("IC", [ "IC" ]);
   addCategory("RegExp", [ "REGEXP" ]);
   addCategory("Other generated", [ "STUB", "BUILTIN" ]);

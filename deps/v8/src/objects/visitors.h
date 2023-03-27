@@ -174,8 +174,7 @@ class ObjectVisitor {
   // Visits an (encoded) internal reference.
   virtual void VisitInternalReference(Code host, RelocInfo* rinfo) {}
 
-  // Visits an off-heap target or near builtin entry in the instruction stream.
-  // TODO(ishell): rename to VisitBuiltinEntry.
+  // Visits an off-heap target in the instruction stream.
   virtual void VisitOffHeapTarget(Code host, RelocInfo* rinfo) {}
 
   // Visits the relocation info using the given iterator.

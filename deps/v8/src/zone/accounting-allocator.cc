@@ -9,6 +9,7 @@
 #include "src/base/bounded-page-allocator.h"
 #include "src/base/logging.h"
 #include "src/base/macros.h"
+#include "src/base/platform/wrappers.h"
 #include "src/utils/allocation.h"
 #include "src/zone/zone-compression.h"
 #include "src/zone/zone-segment.h"

@@ -374,13 +374,9 @@ var prettyPrinted;
 
 
   function deepObjectEquals(a, b) {
-    // Note: This function does not check prototype equality.
-
-    // For now, treat two objects the same even if some property is configured
-    // differently (configurable, enumerable, writable).
-    var aProps = Object.getOwnPropertyNames(a);
+    var aProps = Object.keys(a);
     aProps.sort();
-    var bProps = Object.getOwnPropertyNames(b);
+    var bProps = Object.keys(b);
     bProps.sort();
     if (!deepEquals(aProps, bProps)) {
       return false;

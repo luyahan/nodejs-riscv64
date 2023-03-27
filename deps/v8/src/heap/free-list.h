@@ -78,14 +78,6 @@ class FreeListCategory {
   size_t SumFreeList();
   int FreeListLength();
 
-  template <typename Callback>
-  void IterateNodesForTesting(Callback callback) {
-    for (FreeSpace cur_node = top(); !cur_node.is_null();
-         cur_node = cur_node.next()) {
-      callback(cur_node);
-    }
-  }
-
  private:
   // For debug builds we accurately compute free lists lengths up until
   // {kVeryLongFreeList} by manually walking the list.
@@ -130,10 +122,8 @@ class FreeListCategory {
 // categories would scatter allocation more.
 class FreeList {
  public:
-  // Creates a Freelist of the default class.
+  // Creates a Freelist of the default class (FreeListLegacy for now).
   V8_EXPORT_PRIVATE static FreeList* CreateFreeList();
-  // Creates a Freelist for new space.
-  V8_EXPORT_PRIVATE static FreeList* CreateFreeListForNewSpace();
 
   virtual ~FreeList() = default;
 
@@ -189,8 +179,6 @@ class FreeList {
   FreeListCategoryType last_category() { return last_category_; }
 
   size_t wasted_bytes() { return wasted_bytes_; }
-
-  size_t min_block_size() const { return min_block_size_; }
 
   template <typename Callback>
   void ForAllFreeListCategories(FreeListCategoryType type, Callback callback) {
@@ -485,21 +473,6 @@ class V8_EXPORT_PRIVATE FreeListManyCachedFastPath : public FreeListManyCached {
       FreeListManyCachedFastPathSelectFastAllocationFreeListCategoryType);
 };
 
-// Same as FreeListManyCachedFastPath but falls back to a precise search of the
-// precise category in case allocation fails. Because new space is relatively
-// small, the free list is also relatively small and larger categories are more
-// likely to be empty. The precise search is meant to avoid an allocation
-// failure and thus avoid GCs.
-class V8_EXPORT_PRIVATE FreeListManyCachedFastPathForNewSpace
-    : public FreeListManyCachedFastPath {
- public:
-  V8_WARN_UNUSED_RESULT FreeSpace Allocate(size_t size_in_bytes,
-                                           size_t* node_size,
-                                           AllocationOrigin origin) override;
-
- protected:
-};
-
 // Uses FreeListManyCached if in the GC; FreeListManyCachedFastPath otherwise.
 // The reasoning behind this FreeList is the following: the GC runs in
 // parallel, and therefore, more expensive allocations there are less
@@ -510,16 +483,6 @@ class V8_EXPORT_PRIVATE FreeListManyCachedFastPathForNewSpace
 // fragmentation (FreeListManyCachedFastPath).
 class V8_EXPORT_PRIVATE FreeListManyCachedOrigin
     : public FreeListManyCachedFastPath {
- public:
-  V8_WARN_UNUSED_RESULT FreeSpace Allocate(size_t size_in_bytes,
-                                           size_t* node_size,
-                                           AllocationOrigin origin) override;
-};
-
-// Similar to FreeListManyCachedOrigin but uses
-// FreeListManyCachedFastPathForNewSpace for allocations outside the GC.
-class V8_EXPORT_PRIVATE FreeListManyCachedOriginForNewSpace
-    : public FreeListManyCachedFastPathForNewSpace {
  public:
   V8_WARN_UNUSED_RESULT FreeSpace Allocate(size_t size_in_bytes,
                                            size_t* node_size,

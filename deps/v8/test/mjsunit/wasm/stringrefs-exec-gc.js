@@ -111,19 +111,18 @@ function makeWtf8TestDataSegment() {
     .addBody([
       ...wasmI32Const(0),
       ...wasmI32Const(data.data.length),
-      kGCPrefix, kExprArrayNewData, i8_array, data_index
+      kGCPrefix, kExprArrayNewDataStatic, i8_array, data_index
     ]).index;
 
-  for (let [instr, name] of
-       [[kExprStringNewWtf8Array, "new_wtf8"],
-        [kExprStringNewUtf8Array, "new_utf8"],
-        [kExprStringNewLossyUtf8Array, "new_utf8_sloppy"]]) {
+  for (let [policy, name] of [[kWtf8PolicyAccept, "new_wtf8"],
+                              [kWtf8PolicyReject, "new_utf8"],
+                              [kWtf8PolicyReplace, "new_utf8_sloppy"]]) {
     builder.addFunction(name, kSig_w_ii)
       .exportFunc()
       .addBody([
         kExprCallFunction, make_i8_array,
         kExprLocalGet, 0, kExprLocalGet, 1,
-        ...GCInstr(instr)
+        ...GCInstr(kExprStringNewWtf8Array), policy
       ]);
   }
 
@@ -132,9 +131,9 @@ function makeWtf8TestDataSegment() {
     .addBody([
       ...wasmI32Const(0),
       ...wasmI32Const("ascii".length),
-      kGCPrefix, kExprArrayNewData, i8_array, ascii_data_index,
+      kGCPrefix, kExprArrayNewDataStatic, i8_array, ascii_data_index,
       kExprLocalGet, 0, kExprLocalGet, 1,
-      ...GCInstr(kExprStringNewWtf8Array)
+      ...GCInstr(kExprStringNewWtf8Array), kWtf8PolicyAccept
     ]);
 
   let instance = builder.instantiate();
@@ -221,7 +220,7 @@ function makeWtf16TestDataSegment() {
     .addBody([
       ...wasmI32Const(0),
       ...wasmI32Const(data.data.length / 2),
-      kGCPrefix, kExprArrayNewData, i16_array, data_index
+      kGCPrefix, kExprArrayNewDataStatic, i16_array, data_index
     ]).index;
 
   builder.addFunction("new_wtf16", kSig_w_ii)
@@ -237,7 +236,7 @@ function makeWtf16TestDataSegment() {
     .addBody([
       ...wasmI32Const(0),
       ...wasmI32Const("ascii".length),
-      kGCPrefix, kExprArrayNewData, i16_array, ascii_data_index,
+      kGCPrefix, kExprArrayNewDataStatic, i16_array, ascii_data_index,
       kExprLocalGet, 0, kExprLocalGet, 1,
       ...GCInstr(kExprStringNewWtf16Array)
     ]);
@@ -269,9 +268,7 @@ function makeWtf16TestDataSegment() {
   let kSig_w_wii =
       makeSig([kWasmStringRef, kWasmI32, kWasmI32],
               [kWasmStringRef]);
-  for (let [instr, name] of [[kExprStringEncodeUtf8Array, "utf8"],
-                             [kExprStringEncodeWtf8Array, "wtf8"],
-                             [kExprStringEncodeLossyUtf8Array, "replace"]]) {
+  for (let [policy, name] of ["utf8", "wtf8", "replace"].entries()) {
     // Allocate an array that's exactly the expected size, and encode
     // into it.  Then decode it.
     // (str, length, offset=0) -> str
@@ -289,14 +286,14 @@ function makeWtf16TestDataSegment() {
         kExprLocalGet, 0,
         kExprLocalGet, 3,
         kExprLocalGet, 2,
-        ...GCInstr(instr),
+        ...GCInstr(kExprStringEncodeWtf8Array), policy,
         kExprLocalSet, 4,
 
         // Read buffer.
         kExprLocalGet, 3,
         kExprLocalGet, 2,
         kExprLocalGet, 2, kExprLocalGet, 4, kExprI32Add,
-        ...GCInstr(kExprStringNewWtf8Array)
+        ...GCInstr(kExprStringNewWtf8Array), kWtf8PolicyAccept,
       ]);
   }
 
@@ -306,17 +303,17 @@ function makeWtf16TestDataSegment() {
         kExprRefNull, kStringRefCode,
         kExprI32Const, 0, kGCPrefix, kExprArrayNewDefault, i8_array,
         kExprI32Const, 0,
-        ...GCInstr(kExprStringEncodeWtf8Array)
+        ...GCInstr(kExprStringEncodeWtf8Array), 0,
       ]);
   builder.addFunction("encode_null_array", kSig_i_v)
     .exportFunc()
     .addBody([
         kExprI32Const, 0, kGCPrefix, kExprArrayNewDefault, i8_array,
         kExprI32Const, 0, kExprI32Const, 0,
-        ...GCInstr(kExprStringNewWtf8Array),
+        ...GCInstr(kExprStringNewWtf8Array), kWtf8PolicyAccept,
         kExprRefNull, i8_array,
         kExprI32Const, 0,
-        ...GCInstr(kExprStringEncodeWtf8Array)
+        ...GCInstr(kExprStringEncodeWtf8Array), kWtf8PolicyAccept,
       ]);
 
   let instance = builder.instantiate();

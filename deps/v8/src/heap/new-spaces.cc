@@ -25,7 +25,7 @@ Page* SemiSpace::InitializePage(MemoryChunk* chunk) {
   Page* page = static_cast<Page*>(chunk);
   page->SetYoungGenerationPageFlags(heap()->incremental_marking()->IsMarking());
   page->list_node().Initialize();
-  if (v8_flags.minor_mc) {
+  if (FLAG_minor_mc) {
     heap()
         ->minor_mark_compact_collector()
         ->non_atomic_marking_state()
@@ -481,8 +481,7 @@ void NewSpace::VerifyTop() const {
 // We do not use the SemiSpaceObjectIterator because verification doesn't assume
 // that it works (it depends on the invariants we are checking).
 void NewSpace::VerifyImpl(Isolate* isolate, const Page* current_page,
-                          Address current_address,
-                          Address stop_iteration_at_address) const {
+                          Address current_address) const {
   DCHECK(current_page->ContainsLimit(current_address));
 
   size_t external_space_bytes[kNumTypes];
@@ -496,10 +495,19 @@ void NewSpace::VerifyImpl(Isolate* isolate, const Page* current_page,
   PtrComprCageBase cage_base(isolate);
   VerifyPointersVisitor visitor(heap());
   const Page* page = current_page;
-  while (current_address != stop_iteration_at_address) {
+  while (true) {
+    if (current_address == top()) {
+      if (FLAG_minor_mc) {
+        // Jump over the current allocation area.
+        current_address = limit();
+      } else {
+        // Early bailout since everything after top() should be free space.
+        break;
+      }
+    }
     if (!Page::IsAlignedToPageSize(current_address)) {
       // The allocation pointer should not be in the middle of an object.
-      CHECK_IMPLIES(!v8_flags.minor_mc,
+      CHECK_IMPLIES(!FLAG_minor_mc,
                     !Page::FromAddress(current_address)->ContainsLimit(top()) ||
                         current_address < top());
 
@@ -547,7 +555,7 @@ void NewSpace::VerifyImpl(Isolate* isolate, const Page* current_page,
     CHECK_EQ(external_space_bytes[t], ExternalBackingStoreBytes(t));
   }
 
-  if (!v8_flags.concurrent_array_buffer_sweeping) {
+  if (!FLAG_concurrent_array_buffer_sweeping) {
     size_t bytes = heap()->array_buffer_sweeper()->young().BytesSlow();
     CHECK_EQ(bytes,
              ExternalBackingStoreBytes(ExternalBackingStoreType::kArrayBuffer));
@@ -604,7 +612,7 @@ void SemiSpaceNewSpace::Grow() {
   DCHECK(TotalCapacity() < MaximumCapacity());
   size_t new_capacity = std::min(
       MaximumCapacity(),
-      static_cast<size_t>(v8_flags.semi_space_growth_factor) * TotalCapacity());
+      static_cast<size_t>(FLAG_semi_space_growth_factor) * TotalCapacity());
   if (to_space_.GrowTo(new_capacity)) {
     // Only grow from space if we managed to grow to-space.
     if (!from_space_.GrowTo(new_capacity)) {
@@ -707,8 +715,7 @@ bool SemiSpaceNewSpace::AddFreshPage() {
 
   // We park unused allocation buffer space of allocations happening from the
   // mutator.
-  if (v8_flags.allocation_buffer_parking &&
-      heap()->gc_state() == Heap::NOT_IN_GC &&
+  if (FLAG_allocation_buffer_parking && heap()->gc_state() == Heap::NOT_IN_GC &&
       remaining_in_page >= kAllocationBufferParkingThreshold) {
     parked_allocation_buffers_.push_back(
         ParkedAllocationBuffer(remaining_in_page, top));
@@ -743,7 +750,6 @@ bool SemiSpaceNewSpace::AddParkedAllocationBuffer(
 }
 
 void SemiSpaceNewSpace::FreeLinearAllocationArea() {
-  AdvanceAllocationObservers();
   MakeLinearAllocationAreaIterable();
   UpdateInlineAllocationLimit(0);
 }
@@ -770,7 +776,7 @@ void SemiSpaceNewSpace::Verify(Isolate* isolate) const {
   Address current = to_space_.first_page()->area_start();
   CHECK_EQ(current, to_space_.space_start());
 
-  VerifyImpl(isolate, Page::FromAllocationAreaAddress(current), current, top());
+  VerifyImpl(isolate, Page::FromAllocationAreaAddress(current), current);
 
   // Check semi-spaces.
   CHECK_EQ(from_space_.id(), kFromSpace);
@@ -895,7 +901,7 @@ PagedSpaceForNewSpace::PagedSpaceForNewSpace(
     LinearAllocationArea& allocation_info,
     LinearAreaOriginalData& linear_area_original_data)
     : PagedSpaceBase(heap, NEW_SPACE, NOT_EXECUTABLE,
-                     FreeList::CreateFreeListForNewSpace(), allocation_counter,
+                     FreeList::CreateFreeList(), allocation_counter,
                      allocation_info, linear_area_original_data,
                      CompactionSpaceKind::kNone),
       initial_capacity_(RoundDown(initial_capacity, Page::kPageSize)),
@@ -935,7 +941,7 @@ void PagedSpaceForNewSpace::Grow() {
   DCHECK(TotalCapacity() < MaximumCapacity());
   target_capacity_ =
       std::min(MaximumCapacity(),
-               RoundUp(static_cast<size_t>(v8_flags.semi_space_growth_factor) *
+               RoundUp(static_cast<size_t>(FLAG_semi_space_growth_factor) *
                            TotalCapacity(),
                        Page::kPageSize));
   CHECK(EnsureCurrentCapacity());
@@ -959,6 +965,8 @@ void PagedSpaceForNewSpace::Shrink() {
   // Shrinking to target capacity may not have been possible.
   target_capacity_ = current_capacity_;
 }
+
+void PagedSpaceForNewSpace::EvacuatePrologue() { FreeLinearAllocationArea(); }
 
 void PagedSpaceForNewSpace::UpdateInlineAllocationLimit(size_t size_in_bytes) {
   PagedSpaceBase::UpdateInlineAllocationLimit(size_in_bytes);
@@ -1044,10 +1052,7 @@ PagedNewSpace::~PagedNewSpace() {
 void PagedNewSpace::Verify(Isolate* isolate) const {
   const Page* first_page = paged_space_.first_page();
 
-  if (first_page) {
-    // No bailout needed since all pages are iterable.
-    VerifyImpl(isolate, first_page, first_page->area_start(), kNullAddress);
-  }
+  if (first_page) VerifyImpl(isolate, first_page, first_page->area_start());
 
   // Check paged-spaces.
   VerifyPointersVisitor visitor(heap());

@@ -9,7 +9,6 @@
 #ifndef V8_WASM_MODULE_DECODER_IMPL_H_
 #define V8_WASM_MODULE_DECODER_IMPL_H_
 
-#include "src/base/platform/wrappers.h"
 #include "src/logging/counters.h"
 #include "src/strings/unicode.h"
 #include "src/utils/ostreams.h"
@@ -812,7 +811,7 @@ class ModuleDecoderTemplate : public Decoder {
           table->imported = true;
           const byte* type_position = pc();
           ValueType type = consume_value_type();
-          if (!type.is_object_reference()) {
+          if (!WasmTable::IsValidTableType(type, module_.get())) {
             errorf(type_position, "Invalid table type %s", type.name().c_str());
             break;
           }
@@ -921,8 +920,10 @@ class ModuleDecoderTemplate : public Decoder {
       }
 
       ValueType table_type = consume_value_type();
-      if (!table_type.is_object_reference()) {
-        error(type_position, "Only reference types can be used as table types");
+      if (!WasmTable::IsValidTableType(table_type, module_.get())) {
+        error(type_position,
+              "Currently, only externref and function references are allowed "
+              "as table types");
         continue;
       }
       if (!has_initializer && !table_type.is_defaultable()) {

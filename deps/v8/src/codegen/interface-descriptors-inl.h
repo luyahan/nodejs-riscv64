@@ -25,6 +25,8 @@
 #include "src/codegen/s390/interface-descriptors-s390-inl.h"
 #elif V8_TARGET_ARCH_MIPS64
 #include "src/codegen/mips64/interface-descriptors-mips64-inl.h"
+#elif V8_TARGET_ARCH_MIPS
+#include "src/codegen/mips/interface-descriptors-mips-inl.h"
 #elif V8_TARGET_ARCH_LOONG64
 #include "src/codegen/loong64/interface-descriptors-loong64-inl.h"
 #elif V8_TARGET_ARCH_RISCV32 || V8_TARGET_ARCH_RISCV64
@@ -231,7 +233,7 @@ constexpr RegList WriteBarrierDescriptor::ComputeSavedRegisters(
     saved_registers.set(SlotAddressRegister());
   }
 #elif V8_TARGET_ARCH_ARM64 || V8_TARGET_ARCH_ARM || V8_TARGET_ARCH_LOONG64 || \
-    V8_TARGET_ARCH_MIPS64
+    V8_TARGET_ARCH_MIPS64 || V8_TARGET_ARCH_MIPS
   if (object != ObjectRegister()) saved_registers.set(ObjectRegister());
   // The slot address is always clobbered.
   saved_registers.set(SlotAddressRegister());
@@ -331,9 +333,9 @@ constexpr auto LoadWithReceiverBaselineDescriptor::registers() {
 // static
 constexpr auto BaselineOutOfLinePrologueDescriptor::registers() {
   // TODO(v8:11421): Implement on other platforms.
-#if V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64 || V8_TARGET_ARCH_ARM ||  \
-    V8_TARGET_ARCH_PPC || V8_TARGET_ARCH_PPC64 || V8_TARGET_ARCH_S390 || \
-    V8_TARGET_ARCH_RISCV64 || V8_TARGET_ARCH_MIPS64 ||                   \
+#if V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64 || V8_TARGET_ARCH_ARM ||       \
+    V8_TARGET_ARCH_PPC || V8_TARGET_ARCH_PPC64 || V8_TARGET_ARCH_S390 ||      \
+    V8_TARGET_ARCH_RISCV64 || V8_TARGET_ARCH_MIPS64 || V8_TARGET_ARCH_MIPS || \
     V8_TARGET_ARCH_LOONG64 || V8_TARGET_ARCH_RISCV32
   return RegisterArray(
       kContextRegister, kJSFunctionRegister, kJavaScriptCallArgCountRegister,
@@ -355,7 +357,7 @@ constexpr auto BaselineLeaveFrameDescriptor::registers() {
 #if V8_TARGET_ARCH_IA32 || V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64 ||      \
     V8_TARGET_ARCH_ARM || V8_TARGET_ARCH_PPC || V8_TARGET_ARCH_PPC64 ||       \
     V8_TARGET_ARCH_S390 || V8_TARGET_ARCH_RISCV64 || V8_TARGET_ARCH_MIPS64 || \
-    V8_TARGET_ARCH_LOONG64 || V8_TARGET_ARCH_RISCV32
+    V8_TARGET_ARCH_MIPS || V8_TARGET_ARCH_LOONG64 || V8_TARGET_ARCH_RISCV32
   return RegisterArray(ParamsSizeRegister(), WeightRegister());
 #else
   return DefaultRegisterArray();
@@ -363,15 +365,29 @@ constexpr auto BaselineLeaveFrameDescriptor::registers() {
 }
 
 // static
-constexpr auto OnStackReplacementDescriptor::registers() {
+constexpr auto BaselineOnStackReplacementDescriptor::registers() {
   return DefaultRegisterArray();
 }
 
 // static
-constexpr Register OnStackReplacementDescriptor::MaybeTargetCodeRegister() {
+constexpr Register
+BaselineOnStackReplacementDescriptor::MaybeTargetCodeRegister() {
   // Picking the first register on purpose because it's convenient that this
   // register is the same as the platform's return-value register.
   return registers()[0];
+}
+
+// static
+constexpr auto InterpreterOnStackReplacementDescriptor::registers() {
+  using BaselineD = BaselineOnStackReplacementDescriptor;
+  return BaselineD::registers();
+}
+
+// static
+constexpr Register
+InterpreterOnStackReplacementDescriptor::MaybeTargetCodeRegister() {
+  using BaselineD = BaselineOnStackReplacementDescriptor;
+  return BaselineD::MaybeTargetCodeRegister();
 }
 
 // static

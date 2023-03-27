@@ -31,7 +31,6 @@ namespace maglev {
 
 class BasicBlock;
 class ProcessingState;
-class MaglevAssembler;
 class MaglevCodeGenState;
 class MaglevCompilationUnit;
 class MaglevGraphLabeller;
@@ -144,8 +143,6 @@ class CompactInterpreterFrameState;
   V(InitialValue)                 \
   V(LoadTaggedField)              \
   V(LoadDoubleField)              \
-  V(LoadTaggedElement)            \
-  V(LoadDoubleElement)            \
   V(LoadGlobal)                   \
   V(LoadNamedGeneric)             \
   V(LoadNamedFromSuperGeneric)    \
@@ -186,7 +183,6 @@ class CompactInterpreterFrameState;
   V(GapMove)
 
 #define NODE_LIST(V)                  \
-  V(AssertInt32)                      \
   V(CheckMaps)                        \
   V(CheckSmi)                         \
   V(CheckNumber)                      \
@@ -194,10 +190,7 @@ class CompactInterpreterFrameState;
   V(CheckSymbol)                      \
   V(CheckString)                      \
   V(CheckMapsWithMigration)           \
-  V(CheckJSArrayBounds)               \
-  V(CheckJSObjectElementsBounds)      \
   V(GeneratorStore)                   \
-  V(JumpLoopPrologue)                 \
   V(StoreTaggedFieldNoWriteBarrier)   \
   V(StoreTaggedFieldWithWriteBarrier) \
   V(IncreaseInterruptBudget)          \
@@ -228,13 +221,10 @@ class CompactInterpreterFrameState;
   V(JumpToInlined)                         \
   V(JumpFromInlined)
 
-#define TERMINAL_CONTROL_NODE_LIST(V) \
-  V(Abort)                            \
-  V(Return)                           \
-  V(Deopt)
-
 #define CONTROL_NODE_LIST(V)       \
-  TERMINAL_CONTROL_NODE_LIST(V)    \
+  V(Abort)                         \
+  V(Return)                        \
+  V(Deopt)                         \
   CONDITIONAL_CONTROL_NODE_LIST(V) \
   UNCONDITIONAL_CONTROL_NODE_LIST(V)
 
@@ -289,11 +279,6 @@ static constexpr Opcode kLastUnconditionalControlNodeOpcode =
 static constexpr Opcode kFirstUnconditionalControlNodeOpcode =
     std::min({UNCONDITIONAL_CONTROL_NODE_LIST(V) kLastOpcode});
 
-static constexpr Opcode kLastTerminalControlNodeOpcode =
-    std::max({TERMINAL_CONTROL_NODE_LIST(V) kFirstOpcode});
-static constexpr Opcode kFirstTerminalControlNodeOpcode =
-    std::min({TERMINAL_CONTROL_NODE_LIST(V) kLastOpcode});
-
 static constexpr Opcode kFirstControlNodeOpcode =
     std::min({CONTROL_NODE_LIST(V) kLastOpcode});
 static constexpr Opcode kLastControlNodeOpcode =
@@ -310,9 +295,6 @@ constexpr bool IsConstantNode(Opcode opcode) {
 constexpr bool IsGapMoveNode(Opcode opcode) {
   return kFirstGapMoveNodeOpcode <= opcode && opcode <= kLastGapMoveNodeOpcode;
 }
-constexpr bool IsControlNode(Opcode opcode) {
-  return kFirstControlNodeOpcode <= opcode && opcode <= kLastControlNodeOpcode;
-}
 constexpr bool IsBranchControlNode(Opcode opcode) {
   return kFirstBranchControlNodeOpcode <= opcode &&
          opcode <= kLastBranchControlNodeOpcode;
@@ -325,10 +307,6 @@ constexpr bool IsUnconditionalControlNode(Opcode opcode) {
   return kFirstUnconditionalControlNodeOpcode <= opcode &&
          opcode <= kLastUnconditionalControlNodeOpcode;
 }
-constexpr bool IsTerminalControlNode(Opcode opcode) {
-  return kFirstTerminalControlNodeOpcode <= opcode &&
-         opcode <= kLastTerminalControlNodeOpcode;
-}
 
 // Forward-declare NodeBase sub-hierarchies.
 class Node;
@@ -336,7 +314,6 @@ class ControlNode;
 class ConditionalControlNode;
 class BranchControlNode;
 class UnconditionalControlNode;
-class TerminalControlNode;
 class ValueNode;
 
 enum class ValueRepresentation : uint8_t { kTagged, kInt32, kFloat64 };
@@ -344,16 +321,6 @@ enum class ValueRepresentation : uint8_t { kTagged, kInt32, kFloat64 };
 #define DEF_FORWARD_DECLARATION(type, ...) class type;
 NODE_BASE_LIST(DEF_FORWARD_DECLARATION)
 #undef DEF_FORWARD_DECLARATION
-
-#define DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()          \
-  void AllocateVreg(MaglevVregAllocationState*);               \
-  void GenerateCode(MaglevAssembler*, const ProcessingState&); \
-  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
-
-#define DECL_NODE_INTERFACE()                                  \
-  void AllocateVreg(MaglevVregAllocationState*);               \
-  void GenerateCode(MaglevAssembler*, const ProcessingState&); \
-  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
 using NodeIdT = uint32_t;
 static constexpr uint32_t kInvalidNodeId = 0;
@@ -461,9 +428,7 @@ class OpProperties {
   constexpr bool can_lazy_deopt() const {
     return kCanLazyDeoptBit::decode(bitfield_);
   }
-  constexpr bool can_throw() const {
-    return kCanThrowBit::decode(bitfield_) && can_lazy_deopt();
-  }
+  constexpr bool can_throw() const { return kCanThrowBit::decode(bitfield_); }
   constexpr bool can_read() const { return kCanReadBit::decode(bitfield_); }
   constexpr bool can_write() const { return kCanWriteBit::decode(bitfield_); }
   constexpr bool non_memory_side_effects() const {
@@ -500,7 +465,7 @@ class OpProperties {
     return OpProperties(kCanLazyDeoptBit::encode(true));
   }
   static constexpr OpProperties Throw() {
-    return OpProperties(kCanThrowBit::encode(true)) | LazyDeopt();
+    return OpProperties(kCanThrowBit::encode(true));
   }
   static constexpr OpProperties Reading() {
     return OpProperties(kCanReadBit::encode(true));
@@ -529,16 +494,9 @@ class OpProperties {
   static constexpr OpProperties NeedsRegisterSnapshot() {
     return OpProperties(kNeedsRegisterSnapshotBit::encode(true));
   }
-  // Without auditing the call target, we must assume it can cause a lazy deopt
-  // and throw. Use this when codegen calls runtime or a builtin, unless
-  // certain that the target either doesn't throw or cannot deopt.
-  // TODO(jgruber): Go through all nodes marked with this property and decide
-  // whether to keep it (or remove either the lazy-deopt or throw flag).
-  static constexpr OpProperties GenericRuntimeOrBuiltinCall() {
-    return Call() | NonMemorySideEffects() | LazyDeopt() | Throw();
-  }
   static constexpr OpProperties JSCall() {
-    return Call() | NonMemorySideEffects() | LazyDeopt() | Throw();
+    return Call() | NonMemorySideEffects() | LazyDeopt() |
+           OpProperties::Throw();
   }
   static constexpr OpProperties AnySideEffects() {
     return Reading() | Writing() | NonMemorySideEffects();
@@ -615,7 +573,6 @@ class ValueLocation {
     return compiler::AllocatedOperand::cast(operand_).GetDoubleRegister();
   }
 
-  bool IsAnyRegister() const { return operand_.IsAnyRegister(); }
   bool IsDoubleRegister() const { return operand_.IsDoubleRegister(); }
 
   const compiler::InstructionOperand& operand() const { return operand_; }
@@ -692,8 +649,6 @@ class LazyDeoptInfo : public DeoptInfo {
                 CheckpointedInterpreterState checkpoint)
       : DeoptInfo(zone, compilation_unit, checkpoint) {}
 
-  bool IsResultRegister(interpreter::Register reg) const;
-
   int deopting_call_return_pc = -1;
   interpreter::Register result_location =
       interpreter::Register::invalid_value();
@@ -715,7 +670,6 @@ class ExceptionHandlerInfo {
   }
 
   BasicBlockRef catch_block;
-  Label trampoline_entry;
   int pc_offset;
 };
 
@@ -878,15 +832,12 @@ class NodeBase : public ZoneObject {
     return NumTemporariesNeededField::decode(bitfield_);
   }
 
-  RegList& temporaries() { return temporaries_; }
+  RegList temporaries() const { return temporaries_; }
 
   void assign_temporaries(RegList list) { temporaries_ = list; }
 
   void Print(std::ostream& os, MaglevGraphLabeller*,
              bool skip_targets = false) const;
-
-  // For GDB: Print any Node with `print node->Print()`.
-  void Print() const;
 
   EagerDeoptInfo* eager_deopt_info() {
     DCHECK(properties().can_eager_deopt());
@@ -1040,10 +991,6 @@ constexpr bool NodeBase::Is<ValueNode>() const {
   return IsValueNode(opcode());
 }
 template <>
-constexpr bool NodeBase::Is<ControlNode>() const {
-  return IsControlNode(opcode());
-}
-template <>
 constexpr bool NodeBase::Is<BranchControlNode>() const {
   return IsBranchControlNode(opcode());
 }
@@ -1054,10 +1001,6 @@ constexpr bool NodeBase::Is<ConditionalControlNode>() const {
 template <>
 constexpr bool NodeBase::Is<UnconditionalControlNode>() const {
   return IsUnconditionalControlNode(opcode());
-}
-template <>
-constexpr bool NodeBase::Is<TerminalControlNode>() const {
-  return IsTerminalControlNode(opcode());
 }
 
 // The Node class hierarchy contains all non-control nodes.
@@ -1103,10 +1046,10 @@ class ValueNode : public Node {
   void SetConstantLocation();
 
   /* For constants only. */
-  void LoadToRegister(MaglevAssembler*, Register);
-  void LoadToRegister(MaglevAssembler*, DoubleRegister);
-  void DoLoadToRegister(MaglevAssembler*, Register);
-  void DoLoadToRegister(MaglevAssembler*, DoubleRegister);
+  void LoadToRegister(MaglevCodeGenState*, Register);
+  void LoadToRegister(MaglevCodeGenState*, DoubleRegister);
+  void DoLoadToRegister(MaglevCodeGenState*, Register);
+  void DoLoadToRegister(MaglevCodeGenState*, DoubleRegister);
   Handle<Object> Reify(LocalIsolate* isolate);
 
   void Spill(compiler::AllocatedOperand operand) {
@@ -1164,11 +1107,6 @@ class ValueNode : public Node {
   constexpr bool use_double_register() const {
     return (properties().value_representation() ==
             ValueRepresentation::kFloat64);
-  }
-
-  constexpr bool is_tagged() const {
-    return (properties().value_representation() ==
-            ValueRepresentation::kTagged);
   }
 
   constexpr MachineRepresentation GetMachineRepresentation() const {
@@ -1390,7 +1328,9 @@ class UnaryWithFeedbackNode : public FixedInputValueNodeT<1, Derived> {
                                  const compiler::FeedbackSource& feedback)
       : Base(bitfield), feedback_(feedback) {}
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
   const compiler::FeedbackSource feedback_;
 };
@@ -1414,7 +1354,9 @@ class BinaryWithFeedbackNode : public FixedInputValueNodeT<2, Derived> {
                          const compiler::FeedbackSource& feedback)
       : Base(bitfield), feedback_(feedback) {}
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
   const compiler::FeedbackSource feedback_;
 };
@@ -1426,7 +1368,9 @@ class BinaryWithFeedbackNode : public FixedInputValueNodeT<2, Derived> {
    public:                                                            \
     Name(uint64_t bitfield, const compiler::FeedbackSource& feedback) \
         : Base(bitfield, feedback) {}                                 \
-    DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()                     \
+    void AllocateVreg(MaglevVregAllocationState*);                    \
+    void GenerateCode(MaglevCodeGenState*, const ProcessingState&);   \
+    void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}    \
   };
 
 #define DEF_UNARY_WITH_FEEDBACK_NODE(Name) \
@@ -1457,16 +1401,20 @@ class Int32BinaryWithOverflowNode : public FixedInputValueNodeT<2, Derived> {
  protected:
   explicit Int32BinaryWithOverflowNode(uint64_t bitfield) : Base(bitfield) {}
 
+  // void AllocateVreg(MaglevVregAllocationState*, const ProcessingState&);
+  // void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
   void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
-#define DEF_OPERATION_NODE(Name, Super, OpName)           \
-  class Name : public Super<Name, Operation::k##OpName> { \
-    using Base = Super<Name, Operation::k##OpName>;       \
-                                                          \
-   public:                                                \
-    explicit Name(uint64_t bitfield) : Base(bitfield) {}  \
-    DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()         \
+#define DEF_OPERATION_NODE(Name, Super, OpName)                     \
+  class Name : public Super<Name, Operation::k##OpName> {           \
+    using Base = Super<Name, Operation::k##OpName>;                 \
+                                                                    \
+   public:                                                          \
+    explicit Name(uint64_t bitfield) : Base(bitfield) {}            \
+    void AllocateVreg(MaglevVregAllocationState*);                  \
+    void GenerateCode(MaglevCodeGenState*, const ProcessingState&); \
+    void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}  \
   };
 
 #define DEF_INT32_BINARY_WITH_OVERFLOW_NODE(Name)                            \
@@ -1499,13 +1447,15 @@ class Int32BinaryNode : public FixedInputValueNodeT<2, Derived> {
   void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
-#define DEF_OPERATION_NODE(Name, Super, OpName)           \
-  class Name : public Super<Name, Operation::k##OpName> { \
-    using Base = Super<Name, Operation::k##OpName>;       \
-                                                          \
-   public:                                                \
-    explicit Name(uint64_t bitfield) : Base(bitfield) {}  \
-    DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()         \
+#define DEF_OPERATION_NODE(Name, Super, OpName)                     \
+  class Name : public Super<Name, Operation::k##OpName> {           \
+    using Base = Super<Name, Operation::k##OpName>;                 \
+                                                                    \
+   public:                                                          \
+    explicit Name(uint64_t bitfield) : Base(bitfield) {}            \
+    void AllocateVreg(MaglevVregAllocationState*);                  \
+    void GenerateCode(MaglevCodeGenState*, const ProcessingState&); \
+    void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}  \
   };
 
 #define DEF_INT32_BINARY_NODE(Name) \
@@ -1534,16 +1484,20 @@ class Int32CompareNode : public FixedInputValueNodeT<2, Derived> {
  protected:
   explicit Int32CompareNode(uint64_t bitfield) : Base(bitfield) {}
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
-#define DEF_OPERATION_NODE(Name, Super, OpName)           \
-  class Name : public Super<Name, Operation::k##OpName> { \
-    using Base = Super<Name, Operation::k##OpName>;       \
-                                                          \
-   public:                                                \
-    explicit Name(uint64_t bitfield) : Base(bitfield) {}  \
-    DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()         \
+#define DEF_OPERATION_NODE(Name, Super, OpName)                     \
+  class Name : public Super<Name, Operation::k##OpName> {           \
+    using Base = Super<Name, Operation::k##OpName>;                 \
+                                                                    \
+   public:                                                          \
+    explicit Name(uint64_t bitfield) : Base(bitfield) {}            \
+    void AllocateVreg(MaglevVregAllocationState*);                  \
+    void GenerateCode(MaglevCodeGenState*, const ProcessingState&); \
+    void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}  \
   };
 
 #define DEF_INT32_COMPARE_NODE(Name) \
@@ -1576,13 +1530,15 @@ class Float64BinaryNode : public FixedInputValueNodeT<2, Derived> {
   void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
-#define DEF_OPERATION_NODE(Name, Super, OpName)           \
-  class Name : public Super<Name, Operation::k##OpName> { \
-    using Base = Super<Name, Operation::k##OpName>;       \
-                                                          \
-   public:                                                \
-    explicit Name(uint64_t bitfield) : Base(bitfield) {}  \
-    DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()         \
+#define DEF_OPERATION_NODE(Name, Super, OpName)                     \
+  class Name : public Super<Name, Operation::k##OpName> {           \
+    using Base = Super<Name, Operation::k##OpName>;                 \
+                                                                    \
+   public:                                                          \
+    explicit Name(uint64_t bitfield) : Base(bitfield) {}            \
+    void AllocateVreg(MaglevVregAllocationState*);                  \
+    void GenerateCode(MaglevCodeGenState*, const ProcessingState&); \
+    void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}  \
   };
 
 #define DEF_FLOAT64_BINARY_NODE(Name) \
@@ -1614,16 +1570,20 @@ class Float64CompareNode : public FixedInputValueNodeT<2, Derived> {
  protected:
   explicit Float64CompareNode(uint64_t bitfield) : Base(bitfield) {}
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
-#define DEF_OPERATION_NODE(Name, Super, OpName)           \
-  class Name : public Super<Name, Operation::k##OpName> { \
-    using Base = Super<Name, Operation::k##OpName>;       \
-                                                          \
-   public:                                                \
-    explicit Name(uint64_t bitfield) : Base(bitfield) {}  \
-    DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()         \
+#define DEF_OPERATION_NODE(Name, Super, OpName)                     \
+  class Name : public Super<Name, Operation::k##OpName> {           \
+    using Base = Super<Name, Operation::k##OpName>;                 \
+                                                                    \
+   public:                                                          \
+    explicit Name(uint64_t bitfield) : Base(bitfield) {}            \
+    void AllocateVreg(MaglevVregAllocationState*);                  \
+    void GenerateCode(MaglevCodeGenState*, const ProcessingState&); \
+    void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}  \
   };
 
 #define DEF_FLOAT64_COMPARE_NODE(Name) \
@@ -1649,7 +1609,9 @@ class CheckedSmiTag : public FixedInputValueNodeT<1, CheckedSmiTag> {
 
   Input& input() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class CheckedSmiUntag : public FixedInputValueNodeT<1, CheckedSmiUntag> {
@@ -1664,7 +1626,9 @@ class CheckedSmiUntag : public FixedInputValueNodeT<1, CheckedSmiUntag> {
 
   Input& input() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class Int32Constant : public FixedInputValueNodeT<0, Int32Constant> {
@@ -1682,9 +1646,11 @@ class Int32Constant : public FixedInputValueNodeT<0, Int32Constant> {
 
   bool ToBoolean(LocalIsolate* local_isolate) const { return value_ != 0; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
-  void DoLoadToRegister(MaglevAssembler*, OutputRegister);
+  void DoLoadToRegister(MaglevCodeGenState*, OutputRegister);
   Handle<Object> DoReify(LocalIsolate* isolate);
 
  private:
@@ -1708,9 +1674,11 @@ class Float64Constant : public FixedInputValueNodeT<0, Float64Constant> {
     return value_ != 0.0 && !std::isnan(value_);
   }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
-  void DoLoadToRegister(MaglevAssembler*, OutputRegister);
+  void DoLoadToRegister(MaglevCodeGenState*, OutputRegister);
   Handle<Object> DoReify(LocalIsolate* isolate);
 
  private:
@@ -1728,7 +1696,9 @@ class Float64Box : public FixedInputValueNodeT<1, Float64Box> {
 
   Input& input() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ChangeInt32ToFloat64
@@ -1743,7 +1713,9 @@ class ChangeInt32ToFloat64
 
   Input& input() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class CheckedFloat64Unbox
@@ -1759,7 +1731,9 @@ class CheckedFloat64Unbox
 
   Input& input() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class LogicalNot : public FixedInputValueNodeT<1, LogicalNot> {
@@ -1770,7 +1744,9 @@ class LogicalNot : public FixedInputValueNodeT<1, LogicalNot> {
 
   Input& value() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class SetPendingMessage : public FixedInputValueNodeT<1, SetPendingMessage> {
@@ -1781,7 +1757,9 @@ class SetPendingMessage : public FixedInputValueNodeT<1, SetPendingMessage> {
 
   Input& value() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ToBooleanLogicalNot
@@ -1793,7 +1771,9 @@ class ToBooleanLogicalNot
 
   Input& value() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class TaggedEqual : public FixedInputValueNodeT<2, TaggedEqual> {
@@ -1805,7 +1785,9 @@ class TaggedEqual : public FixedInputValueNodeT<2, TaggedEqual> {
   Input& lhs() { return Node::input(0); }
   Input& rhs() { return Node::input(1); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class TaggedNotEqual : public FixedInputValueNodeT<2, TaggedNotEqual> {
@@ -1817,7 +1799,9 @@ class TaggedNotEqual : public FixedInputValueNodeT<2, TaggedNotEqual> {
   Input& lhs() { return Node::input(0); }
   Input& rhs() { return Node::input(1); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class TestInstanceOf : public FixedInputValueNodeT<3, TestInstanceOf> {
@@ -1833,7 +1817,9 @@ class TestInstanceOf : public FixedInputValueNodeT<3, TestInstanceOf> {
   Input& object() { return input(1); }
   Input& callable() { return input(2); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class TestUndetectable : public FixedInputValueNodeT<1, TestUndetectable> {
@@ -1844,7 +1830,9 @@ class TestUndetectable : public FixedInputValueNodeT<1, TestUndetectable> {
 
   Input& value() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class TestTypeOf : public FixedInputValueNodeT<1, TestTypeOf> {
@@ -1857,7 +1845,9 @@ class TestTypeOf : public FixedInputValueNodeT<1, TestTypeOf> {
 
   Input& value() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   interpreter::TestTypeOfFlags::LiteralFlag literal_;
@@ -1875,7 +1865,9 @@ class ToName : public FixedInputValueNodeT<2, ToName> {
   Input& context() { return Node::input(0); }
   Input& value_input() { return Node::input(1); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ToNumberOrNumeric : public FixedInputValueNodeT<2, ToNumberOrNumeric> {
@@ -1892,7 +1884,9 @@ class ToNumberOrNumeric : public FixedInputValueNodeT<2, ToNumberOrNumeric> {
   Input& value_input() { return Node::input(1); }
   Object::Conversion mode() const { return mode_; }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const Object::Conversion mode_;
@@ -1914,7 +1908,9 @@ class DeleteProperty : public FixedInputValueNodeT<3, DeleteProperty> {
 
   LanguageMode mode() const { return mode_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const LanguageMode mode_;
@@ -1940,8 +1936,6 @@ class GeneratorStore : public NodeT<GeneratorStore> {
     set_input(kGeneratorIndex, generator);
   }
 
-  static constexpr OpProperties kProperties = OpProperties::DeferredCall();
-
   int suspend_id() const { return suspend_id_; }
   int bytecode_offset() const { return bytecode_offset_; }
 
@@ -1956,38 +1950,13 @@ class GeneratorStore : public NodeT<GeneratorStore> {
     set_input(i + kFixedInputCount, node);
   }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const int suspend_id_;
   const int bytecode_offset_;
-};
-
-class JumpLoopPrologue : public FixedInputNodeT<0, JumpLoopPrologue> {
-  using Base = FixedInputNodeT<0, JumpLoopPrologue>;
-
- public:
-  explicit JumpLoopPrologue(uint64_t bitfield, int32_t loop_depth,
-                            FeedbackSlot feedback_slot,
-                            BytecodeOffset osr_offset,
-                            MaglevCompilationUnit* unit)
-      : Base(bitfield),
-        loop_depth_(loop_depth),
-        feedback_slot_(feedback_slot),
-        osr_offset_(osr_offset),
-        unit_(unit) {}
-
-  static constexpr OpProperties kProperties =
-      OpProperties::NeedsRegisterSnapshot() | OpProperties::EagerDeopt();
-
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
-
- private:
-  // For OSR.
-  const int32_t loop_depth_;
-  const FeedbackSlot feedback_slot_;
-  const BytecodeOffset osr_offset_;
-  MaglevCompilationUnit* const unit_;
 };
 
 class ForInPrepare : public FixedInputValueNodeT<2, ForInPrepare> {
@@ -1997,17 +1966,16 @@ class ForInPrepare : public FixedInputValueNodeT<2, ForInPrepare> {
   explicit ForInPrepare(uint64_t bitfield, compiler::FeedbackSource& feedback)
       : Base(bitfield), feedback_(feedback) {}
 
-  static constexpr OpProperties kProperties =
-      OpProperties::GenericRuntimeOrBuiltinCall();
+  static constexpr OpProperties kProperties = OpProperties::Call();
 
   compiler::FeedbackSource feedback() const { return feedback_; }
 
   Input& context() { return Node::input(0); }
   Input& enumerator() { return Node::input(1); }
 
-  int ReturnCount() const { return 2; }
-
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::FeedbackSource feedback_;
@@ -2030,7 +1998,9 @@ class ForInNext : public FixedInputValueNodeT<5, ForInNext> {
   Input& cache_type() { return Node::input(3); }
   Input& cache_index() { return Node::input(4); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::FeedbackSource feedback_;
@@ -2056,7 +2026,9 @@ class GetIterator : public FixedInputValueNodeT<2, GetIterator> {
   int call_slot() const { return call_slot_; }
   Handle<FeedbackVector> feedback() const { return feedback_; }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const int load_slot_;
@@ -2071,7 +2043,9 @@ class GetSecondReturnedValue
  public:
   explicit GetSecondReturnedValue(uint64_t bitfield) : Base(bitfield) {}
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ToObject : public FixedInputValueNodeT<2, ToObject> {
@@ -2086,7 +2060,9 @@ class ToObject : public FixedInputValueNodeT<2, ToObject> {
   Input& context() { return Node::input(0); }
   Input& value_input() { return Node::input(1); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ToString : public FixedInputValueNodeT<2, ToString> {
@@ -2101,7 +2077,9 @@ class ToString : public FixedInputValueNodeT<2, ToString> {
   Input& context() { return Node::input(0); }
   Input& value_input() { return Node::input(1); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class GeneratorRestoreRegister
@@ -2115,7 +2093,9 @@ class GeneratorRestoreRegister
   Input& array_input() { return input(0); }
   int index() const { return index_; }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const int index_;
@@ -2130,7 +2110,9 @@ class InitialValue : public FixedInputValueNodeT<0, InitialValue> {
 
   interpreter::Register source() const { return source_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const interpreter::Register source_;
@@ -2150,7 +2132,9 @@ class RegisterInput : public FixedInputValueNodeT<0, RegisterInput> {
 
   Register input() const { return input_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const Register input_;
@@ -2171,9 +2155,11 @@ class SmiConstant : public FixedInputValueNodeT<0, SmiConstant> {
     return value_ != Smi::FromInt(0);
   }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
-  void DoLoadToRegister(MaglevAssembler*, OutputRegister);
+  void DoLoadToRegister(MaglevCodeGenState*, OutputRegister);
   Handle<Object> DoReify(LocalIsolate* isolate);
 
  private:
@@ -2195,9 +2181,11 @@ class Constant : public FixedInputValueNodeT<0, Constant> {
 
   bool IsTheHole() const { return object_.IsTheHole(); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
-  void DoLoadToRegister(MaglevAssembler*, OutputRegister);
+  void DoLoadToRegister(MaglevCodeGenState*, OutputRegister);
   Handle<Object> DoReify(LocalIsolate* isolate);
 
  private:
@@ -2217,9 +2205,11 @@ class RootConstant : public FixedInputValueNodeT<0, RootConstant> {
 
   RootIndex index() const { return index_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
-  void DoLoadToRegister(MaglevAssembler*, OutputRegister);
+  void DoLoadToRegister(MaglevCodeGenState*, OutputRegister);
   Handle<Object> DoReify(LocalIsolate* isolate);
 
  private:
@@ -2238,10 +2228,11 @@ class CreateEmptyArrayLiteral
   compiler::FeedbackSource feedback() const { return feedback_; }
 
   // The implementation currently calls runtime.
-  static constexpr OpProperties kProperties =
-      OpProperties::GenericRuntimeOrBuiltinCall();
+  static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::FeedbackSource feedback_;
@@ -2267,7 +2258,9 @@ class CreateArrayLiteral : public FixedInputValueNodeT<0, CreateArrayLiteral> {
   // The implementation currently calls runtime.
   static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::HeapObjectRef constant_elements_;
@@ -2293,10 +2286,11 @@ class CreateShallowArrayLiteral
   int flags() const { return flags_; }
 
   // The implementation currently calls runtime.
-  static constexpr OpProperties kProperties =
-      OpProperties::GenericRuntimeOrBuiltinCall();
+  static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::HeapObjectRef constant_elements_;
@@ -2327,7 +2321,9 @@ class CreateObjectLiteral
   // The implementation currently calls runtime.
   static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::ObjectBoilerplateDescriptionRef boilerplate_descriptor_;
@@ -2347,7 +2343,9 @@ class CreateEmptyObjectLiteral
 
   compiler::MapRef map() { return map_; }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::MapRef map_;
@@ -2376,10 +2374,11 @@ class CreateShallowObjectLiteral
   int flags() const { return flags_; }
 
   // The implementation currently calls runtime.
-  static constexpr OpProperties kProperties =
-      OpProperties::GenericRuntimeOrBuiltinCall();
+  static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::ObjectBoilerplateDescriptionRef boilerplate_descriptor_;
@@ -2407,10 +2406,11 @@ class CreateFunctionContext
   Input& context() { return input(0); }
 
   // The implementation currently calls runtime.
-  static constexpr OpProperties kProperties =
-      OpProperties::GenericRuntimeOrBuiltinCall();
+  static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::ScopeInfoRef scope_info_;
@@ -2437,10 +2437,11 @@ class FastCreateClosure : public FixedInputValueNodeT<1, FastCreateClosure> {
   Input& context() { return input(0); }
 
   // The implementation currently calls runtime.
-  static constexpr OpProperties kProperties =
-      OpProperties::GenericRuntimeOrBuiltinCall();
+  static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::SharedFunctionInfoRef shared_function_info_;
@@ -2465,7 +2466,9 @@ class CreateRegExpLiteral
   // The implementation currently calls runtime.
   static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   compiler::StringRef pattern_;
@@ -2497,7 +2500,9 @@ class CreateClosure : public FixedInputValueNodeT<1, CreateClosure> {
   // The implementation currently calls runtime.
   static constexpr OpProperties kProperties = OpProperties::Call();
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::SharedFunctionInfoRef shared_function_info_;
@@ -2505,42 +2510,12 @@ class CreateClosure : public FixedInputValueNodeT<1, CreateClosure> {
   const bool pretenured_;
 };
 
-enum class AssertCondition {
-  kLess,
-  kLessOrEqual,
-  kGreater,
-  kGeaterOrEqual,
-  kEqual,
-  kNotEqual,
-};
-
-class AssertInt32 : public FixedInputNodeT<2, AssertInt32> {
-  using Base = FixedInputNodeT<2, AssertInt32>;
-
- public:
-  explicit AssertInt32(uint64_t bitfield, AssertCondition condition,
-                       AbortReason reason)
-      : Base(bitfield), condition_(condition), reason_(reason) {}
-
-  Input& left_input() { return input(0); }
-  Input& right_input() { return input(1); }
-
-  DECL_NODE_INTERFACE()
-
- private:
-  AssertCondition condition_;
-  AbortReason reason_;
-};
-
-enum class CheckType { kCheckHeapObject, kOmitHeapObjectCheck };
-
 class CheckMaps : public FixedInputNodeT<1, CheckMaps> {
   using Base = FixedInputNodeT<1, CheckMaps>;
 
  public:
-  explicit CheckMaps(uint64_t bitfield, const compiler::MapRef& map,
-                     CheckType check_type)
-      : Base(bitfield), map_(map), check_type_(check_type) {
+  explicit CheckMaps(uint64_t bitfield, const compiler::MapRef& map)
+      : Base(bitfield), map_(map) {
     DCHECK(!map.is_migration_target());
   }
 
@@ -2551,11 +2526,12 @@ class CheckMaps : public FixedInputNodeT<1, CheckMaps> {
   static constexpr int kReceiverIndex = 0;
   Input& receiver_input() { return input(kReceiverIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::MapRef map_;
-  const CheckType check_type_;
 };
 class CheckSmi : public FixedInputNodeT<1, CheckSmi> {
   using Base = FixedInputNodeT<1, CheckSmi>;
@@ -2568,7 +2544,9 @@ class CheckSmi : public FixedInputNodeT<1, CheckSmi> {
   static constexpr int kReceiverIndex = 0;
   Input& receiver_input() { return input(kReceiverIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 };
 
 class CheckNumber : public FixedInputNodeT<1, CheckNumber> {
@@ -2584,7 +2562,9 @@ class CheckNumber : public FixedInputNodeT<1, CheckNumber> {
   Input& receiver_input() { return input(kReceiverIndex); }
   Object::Conversion mode() const { return mode_; }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const Object::Conversion mode_;
@@ -2601,43 +2581,41 @@ class CheckHeapObject : public FixedInputNodeT<1, CheckHeapObject> {
   static constexpr int kReceiverIndex = 0;
   Input& receiver_input() { return input(kReceiverIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 };
 
 class CheckSymbol : public FixedInputNodeT<1, CheckSymbol> {
   using Base = FixedInputNodeT<1, CheckSymbol>;
 
  public:
-  explicit CheckSymbol(uint64_t bitfield, CheckType check_type)
-      : Base(bitfield), check_type_(check_type) {}
+  explicit CheckSymbol(uint64_t bitfield) : Base(bitfield) {}
 
   static constexpr OpProperties kProperties = OpProperties::EagerDeopt();
 
   static constexpr int kReceiverIndex = 0;
   Input& receiver_input() { return input(kReceiverIndex); }
 
-  DECL_NODE_INTERFACE()
-
- private:
-  const CheckType check_type_;
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 };
 
 class CheckString : public FixedInputNodeT<1, CheckString> {
   using Base = FixedInputNodeT<1, CheckString>;
 
  public:
-  explicit CheckString(uint64_t bitfield, CheckType check_type)
-      : Base(bitfield), check_type_(check_type) {}
+  explicit CheckString(uint64_t bitfield) : Base(bitfield) {}
 
   static constexpr OpProperties kProperties = OpProperties::EagerDeopt();
 
   static constexpr int kReceiverIndex = 0;
   Input& receiver_input() { return input(kReceiverIndex); }
 
-  DECL_NODE_INTERFACE()
-
- private:
-  const CheckType check_type_;
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 };
 
 class CheckMapsWithMigration
@@ -2646,9 +2624,8 @@ class CheckMapsWithMigration
 
  public:
   explicit CheckMapsWithMigration(uint64_t bitfield,
-                                  const compiler::MapRef& map,
-                                  CheckType check_type)
-      : Base(bitfield), map_(map), check_type_(check_type) {
+                                  const compiler::MapRef& map)
+      : Base(bitfield), map_(map) {
     DCHECK(map.is_migration_target());
   }
 
@@ -2660,44 +2637,12 @@ class CheckMapsWithMigration
   static constexpr int kReceiverIndex = 0;
   Input& receiver_input() { return input(kReceiverIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::MapRef map_;
-  const CheckType check_type_;
-};
-
-class CheckJSArrayBounds : public FixedInputNodeT<2, CheckJSArrayBounds> {
-  using Base = FixedInputNodeT<2, CheckJSArrayBounds>;
-
- public:
-  explicit CheckJSArrayBounds(uint64_t bitfield) : Base(bitfield) {}
-
-  static constexpr OpProperties kProperties = OpProperties::EagerDeopt();
-
-  static constexpr int kReceiverIndex = 0;
-  static constexpr int kIndexIndex = 1;
-  Input& receiver_input() { return input(kReceiverIndex); }
-  Input& index_input() { return input(kIndexIndex); }
-
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
-};
-
-class CheckJSObjectElementsBounds
-    : public FixedInputNodeT<2, CheckJSObjectElementsBounds> {
-  using Base = FixedInputNodeT<2, CheckJSObjectElementsBounds>;
-
- public:
-  explicit CheckJSObjectElementsBounds(uint64_t bitfield) : Base(bitfield) {}
-
-  static constexpr OpProperties kProperties = OpProperties::EagerDeopt();
-
-  static constexpr int kReceiverIndex = 0;
-  static constexpr int kIndexIndex = 1;
-  Input& receiver_input() { return input(kReceiverIndex); }
-  Input& index_input() { return input(kIndexIndex); }
-
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
 };
 
 class CheckedInternalizedString
@@ -2705,9 +2650,7 @@ class CheckedInternalizedString
   using Base = FixedInputValueNodeT<1, CheckedInternalizedString>;
 
  public:
-  explicit CheckedInternalizedString(
-      uint64_t bitfield, CheckType check_type = CheckType::kCheckHeapObject)
-      : Base(bitfield), check_type_(check_type) {
+  explicit CheckedInternalizedString(uint64_t bitfield) : Base(bitfield) {
     CHECK_EQ(properties().value_representation(), ValueRepresentation::kTagged);
   }
 
@@ -2718,10 +2661,9 @@ class CheckedInternalizedString
   static constexpr int kObjectIndex = 0;
   Input& object_input() { return Node::input(kObjectIndex); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
-
- private:
-  const CheckType check_type_;
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class GetTemplateObject : public FixedInputValueNodeT<1, GetTemplateObject> {
@@ -2737,8 +2679,7 @@ class GetTemplateObject : public FixedInputValueNodeT<1, GetTemplateObject> {
         feedback_(feedback) {}
 
   // The implementation currently calls runtime.
-  static constexpr OpProperties kProperties =
-      OpProperties::GenericRuntimeOrBuiltinCall();
+  static constexpr OpProperties kProperties = OpProperties::Call();
 
   Input& description() { return input(0); }
 
@@ -2747,7 +2688,9 @@ class GetTemplateObject : public FixedInputValueNodeT<1, GetTemplateObject> {
   }
   compiler::FeedbackSource feedback() const { return feedback_; }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   compiler::SharedFunctionInfoRef shared_function_info_;
@@ -2768,7 +2711,9 @@ class LoadTaggedField : public FixedInputValueNodeT<1, LoadTaggedField> {
   static constexpr int kObjectIndex = 0;
   Input& object_input() { return input(kObjectIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const int offset_;
@@ -2789,43 +2734,12 @@ class LoadDoubleField : public FixedInputValueNodeT<1, LoadDoubleField> {
   static constexpr int kObjectIndex = 0;
   Input& object_input() { return input(kObjectIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const int offset_;
-};
-
-class LoadTaggedElement : public FixedInputValueNodeT<2, LoadTaggedElement> {
-  using Base = FixedInputValueNodeT<2, LoadTaggedElement>;
-
- public:
-  explicit LoadTaggedElement(uint64_t bitfield) : Base(bitfield) {}
-
-  static constexpr OpProperties kProperties = OpProperties::Reading();
-
-  static constexpr int kObjectIndex = 0;
-  static constexpr int kIndexIndex = 1;
-  Input& object_input() { return input(kObjectIndex); }
-  Input& index_input() { return input(kIndexIndex); }
-
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
-};
-
-class LoadDoubleElement : public FixedInputValueNodeT<2, LoadDoubleElement> {
-  using Base = FixedInputValueNodeT<2, LoadDoubleElement>;
-
- public:
-  explicit LoadDoubleElement(uint64_t bitfield) : Base(bitfield) {}
-
-  static constexpr OpProperties kProperties =
-      OpProperties::Reading() | OpProperties::Float64();
-
-  static constexpr int kObjectIndex = 0;
-  static constexpr int kIndexIndex = 1;
-  Input& object_input() { return input(kObjectIndex); }
-  Input& index_input() { return input(kIndexIndex); }
-
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
 };
 
 class StoreTaggedFieldNoWriteBarrier
@@ -2845,7 +2759,9 @@ class StoreTaggedFieldNoWriteBarrier
   Input& object_input() { return input(kObjectIndex); }
   Input& value_input() { return input(kValueIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const int offset_;
@@ -2869,7 +2785,9 @@ class StoreTaggedFieldWithWriteBarrier
   Input& object_input() { return input(kObjectIndex); }
   Input& value_input() { return input(kValueIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const int offset_;
@@ -2896,7 +2814,9 @@ class LoadGlobal : public FixedInputValueNodeT<1, LoadGlobal> {
 
   Input& context() { return input(0); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::NameRef name_;
@@ -2921,7 +2841,9 @@ class StoreGlobal : public FixedInputValueNodeT<2, StoreGlobal> {
   Input& context() { return input(0); }
   Input& value() { return input(1); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::NameRef name_;
@@ -2947,7 +2869,9 @@ class LoadNamedGeneric : public FixedInputValueNodeT<2, LoadNamedGeneric> {
   Input& context() { return input(kContextIndex); }
   Input& object_input() { return input(kObjectIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::NameRef name_;
@@ -2977,7 +2901,9 @@ class LoadNamedFromSuperGeneric
   Input& receiver() { return input(kReceiverIndex); }
   Input& lookup_start_object() { return input(kLookupStartObjectIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::NameRef name_;
@@ -3005,7 +2931,9 @@ class SetNamedGeneric : public FixedInputValueNodeT<3, SetNamedGeneric> {
   Input& object_input() { return input(kObjectIndex); }
   Input& value_input() { return input(kValueIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::NameRef name_;
@@ -3035,7 +2963,9 @@ class DefineNamedOwnGeneric
   Input& object_input() { return input(kObjectIndex); }
   Input& value_input() { return input(kValueIndex); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const compiler::NameRef name_;
@@ -3065,7 +2995,9 @@ class StoreInArrayLiteralGeneric
   Input& name_input() { return input(kNameIndex); }
   Input& value_input() { return input(kValueIndex); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::FeedbackSource feedback_;
@@ -3091,7 +3023,9 @@ class GetKeyedGeneric : public FixedInputValueNodeT<3, GetKeyedGeneric> {
   Input& object_input() { return input(kObjectIndex); }
   Input& key_input() { return input(kKeyIndex); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::FeedbackSource feedback_;
@@ -3119,7 +3053,9 @@ class SetKeyedGeneric : public FixedInputValueNodeT<4, SetKeyedGeneric> {
   Input& key_input() { return input(kKeyIndex); }
   Input& value_input() { return input(kValueIndex); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::FeedbackSource feedback_;
@@ -3148,7 +3084,9 @@ class DefineKeyedOwnGeneric
   Input& key_input() { return input(kKeyIndex); }
   Input& value_input() { return input(kValueIndex); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::FeedbackSource feedback_;
@@ -3165,7 +3103,9 @@ class GapMove : public FixedInputNodeT<0, GapMove> {
   compiler::AllocatedOperand source() const { return source_; }
   compiler::AllocatedOperand target() const { return target_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   compiler::AllocatedOperand source_;
@@ -3183,7 +3123,9 @@ class ConstantGapMove : public FixedInputNodeT<0, ConstantGapMove> {
   compiler::AllocatedOperand target() const { return target_; }
   ValueNode* node() const { return node_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   ValueNode* node_;
@@ -3210,8 +3152,10 @@ class Phi : public ValueNodeT<Phi> {
   using Node::reduce_input_count;
   using Node::set_input;
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
   void AllocateVregInPostProcess(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   Phi** next() { return &next_; }
@@ -3257,7 +3201,9 @@ class Call : public ValueNodeT<Call> {
     set_input(i + kFixedInputCount, node);
   }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   ConvertReceiverMode receiver_mode_;
@@ -3301,7 +3247,9 @@ class Construct : public ValueNodeT<Construct> {
     set_input(i + kFixedInputCount, node);
   }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class CallBuiltin : public ValueNodeT<CallBuiltin> {
@@ -3377,12 +3325,14 @@ class CallBuiltin : public ValueNodeT<CallBuiltin> {
 
   void set_arg(int i, ValueNode* node) { set_input(i, node); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
-  void PassFeedbackSlotOnStack(MaglevAssembler*);
-  void PassFeedbackSlotInRegister(MaglevAssembler*);
-  void PushFeedback(MaglevAssembler*);
+  void PassFeedbackSlotOnStack(MaglevCodeGenState*);
+  void PassFeedbackSlotInRegister(MaglevCodeGenState*);
+  void PushFeedback(MaglevCodeGenState*);
 
   Builtin builtin_;
   base::Optional<compiler::FeedbackSource> feedback_;
@@ -3417,11 +3367,13 @@ class CallRuntime : public ValueNodeT<CallRuntime> {
     set_input(i + kFixedInputCount, node);
   }
 
-  int ReturnCount() const {
+  int ReturnCount() {
     return Runtime::FunctionForId(function_id())->result_size;
   }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   Runtime::FunctionId function_id_;
@@ -3460,7 +3412,9 @@ class CallWithSpread : public ValueNodeT<CallWithSpread> {
     return input(input_count() - 1);
   }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ConstructWithSpread : public ValueNodeT<ConstructWithSpread> {
@@ -3501,7 +3455,9 @@ class ConstructWithSpread : public ValueNodeT<ConstructWithSpread> {
     return input(input_count() - 1);
   }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class IncreaseInterruptBudget
@@ -3516,7 +3472,9 @@ class IncreaseInterruptBudget
 
   int amount() const { return amount_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const int amount_;
@@ -3540,7 +3498,9 @@ class ReduceInterruptBudget : public FixedInputNodeT<0, ReduceInterruptBudget> {
 
   int amount() const { return amount_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const int amount_;
@@ -3562,7 +3522,9 @@ class ThrowReferenceErrorIfHole
 
   Input& value() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const compiler::NameRef name_;
@@ -3580,7 +3542,9 @@ class ThrowSuperNotCalledIfHole
 
   Input& value() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ThrowSuperAlreadyCalledIfNotHole
@@ -3596,7 +3560,9 @@ class ThrowSuperAlreadyCalledIfNotHole
 
   Input& value() { return Node::input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ThrowIfNotSuperConstructor
@@ -3612,7 +3578,9 @@ class ThrowIfNotSuperConstructor
   Input& constructor() { return Node::input(0); }
   Input& function() { return Node::input(1); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class ControlNode : public NodeBase {
@@ -3627,9 +3595,10 @@ class ControlNode : public NodeBase {
     return next_post_dominating_hole_;
   }
   void set_next_post_dominating_hole(ControlNode* node) {
-    DCHECK_IMPLIES(node != nullptr, node->Is<UnconditionalControlNode>() ||
-                                        node->Is<TerminalControlNode>() ||
-                                        node->Is<Switch>());
+    DCHECK_IMPLIES(node != nullptr,
+                   node->Is<UnconditionalControlNode>() || node->Is<Abort>() ||
+                       node->Is<Return>() || node->Is<Deopt>() ||
+                       node->Is<Switch>());
     next_post_dominating_hole_ = node;
   }
 
@@ -3688,7 +3657,7 @@ class UnconditionalControlNodeT : public UnconditionalControlNode {
 
 class ConditionalControlNode : public ControlNode {
  public:
-  explicit ConditionalControlNode(uint64_t bitfield) : ControlNode(bitfield) {}
+  ConditionalControlNode(uint64_t bitfield) : ControlNode(bitfield) {}
 };
 
 class BranchControlNode : public ConditionalControlNode {
@@ -3705,26 +3674,6 @@ class BranchControlNode : public ConditionalControlNode {
  private:
   BasicBlockRef if_true_;
   BasicBlockRef if_false_;
-};
-
-class TerminalControlNode : public ControlNode {
- protected:
-  explicit TerminalControlNode(uint64_t bitfield) : ControlNode(bitfield) {}
-};
-
-template <class Derived>
-class TerminalControlNodeT : public TerminalControlNode {
-  static_assert(IsTerminalControlNode(opcode_of<Derived>));
-
- public:
-  // Shadowing for static knowledge.
-  constexpr Opcode opcode() const { return NodeBase::opcode_of<Derived>; }
-
- protected:
-  explicit TerminalControlNodeT(uint64_t bitfield)
-      : TerminalControlNode(bitfield) {
-    DCHECK_EQ(NodeBase::opcode(), opcode_of<Derived>);
-  }
 };
 
 template <size_t InputCount, class Derived>
@@ -3757,20 +3706,30 @@ class Jump : public UnconditionalControlNodeT<Jump> {
   Jump(uint64_t bitfield, BasicBlockRef* target_refs)
       : Base(bitfield, target_refs) {}
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class JumpLoop : public UnconditionalControlNodeT<JumpLoop> {
   using Base = UnconditionalControlNodeT<JumpLoop>;
 
  public:
-  explicit JumpLoop(uint64_t bitfield, BasicBlock* target)
-      : Base(bitfield, target) {}
+  explicit JumpLoop(uint64_t bitfield, BasicBlock* target, int32_t loop_depth,
+                    FeedbackSlot feedback_slot)
+      : Base(bitfield, target),
+        loop_depth_(loop_depth),
+        feedback_slot_(feedback_slot) {}
 
-  explicit JumpLoop(uint64_t bitfield, BasicBlockRef* ref)
-      : Base(bitfield, ref) {}
+  explicit JumpLoop(uint64_t bitfield, BasicBlockRef* ref, int32_t loop_depth,
+                    FeedbackSlot feedback_slot)
+      : Base(bitfield, ref),
+        loop_depth_(loop_depth),
+        feedback_slot_(feedback_slot) {}
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
   base::Vector<Input> used_nodes() { return used_node_locations_; }
   void set_used_nodes(base::Vector<Input> locations) {
@@ -3778,6 +3737,9 @@ class JumpLoop : public UnconditionalControlNodeT<JumpLoop> {
   }
 
  private:
+  // For OSR.
+  const int32_t loop_depth_;
+  const FeedbackSlot feedback_slot_;
   base::Vector<Input> used_node_locations_;
 };
 
@@ -3789,12 +3751,14 @@ class JumpToInlined : public UnconditionalControlNodeT<JumpToInlined> {
                          MaglevCompilationUnit* unit)
       : Base(bitfield, target_refs), unit_(unit) {}
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
   const MaglevCompilationUnit* unit() const { return unit_; }
 
  private:
-  MaglevCompilationUnit* const unit_;
+  MaglevCompilationUnit* unit_;
 };
 
 class JumpFromInlined : public UnconditionalControlNodeT<JumpFromInlined> {
@@ -3804,39 +3768,45 @@ class JumpFromInlined : public UnconditionalControlNodeT<JumpFromInlined> {
   explicit JumpFromInlined(uint64_t bitfield, BasicBlockRef* target_refs)
       : Base(bitfield, target_refs) {}
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
-class Abort : public TerminalControlNode {
+class Abort : public ControlNode {
  public:
   explicit Abort(uint64_t bitfield, AbortReason reason)
-      : TerminalControlNode(bitfield), reason_(reason) {
+      : ControlNode(bitfield), reason_(reason) {
     DCHECK_EQ(NodeBase::opcode(), opcode_of<Abort>);
   }
 
   AbortReason reason() const { return reason_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*) {}
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   const AbortReason reason_;
 };
 
-class Return : public TerminalControlNode {
+class Return : public ControlNode {
  public:
-  explicit Return(uint64_t bitfield) : TerminalControlNode(bitfield) {
+  explicit Return(uint64_t bitfield) : ControlNode(bitfield) {
     DCHECK_EQ(NodeBase::opcode(), opcode_of<Return>);
   }
 
   Input& value_input() { return input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
-class Deopt : public TerminalControlNode {
+class Deopt : public ControlNode {
  public:
   explicit Deopt(uint64_t bitfield, DeoptimizeReason reason)
-      : TerminalControlNode(bitfield), reason_(reason) {
+      : ControlNode(bitfield), reason_(reason) {
     DCHECK_EQ(NodeBase::opcode(), opcode_of<Deopt>);
   }
 
@@ -3844,7 +3814,9 @@ class Deopt : public TerminalControlNode {
 
   DeoptimizeReason reason() const { return reason_; }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   DeoptimizeReason reason_;
@@ -3880,7 +3852,9 @@ class Switch : public ConditionalControlNode {
 
   Input& value() { return input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   const int value_base_;
@@ -3902,7 +3876,9 @@ class BranchIfRootConstant
   RootIndex root_index() { return root_index_; }
   Input& condition_input() { return input(0); }
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 
  private:
   RootIndex root_index_;
@@ -3920,7 +3896,9 @@ class BranchIfUndefinedOrNull
 
   Input& condition_input() { return input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class BranchIfJSReceiver : public BranchControlNodeT<1, BranchIfJSReceiver> {
@@ -3933,7 +3911,9 @@ class BranchIfJSReceiver : public BranchControlNodeT<1, BranchIfJSReceiver> {
 
   Input& condition_input() { return input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class BranchIfToBooleanTrue
@@ -3949,7 +3929,9 @@ class BranchIfToBooleanTrue
 
   Input& condition_input() { return input(0); }
 
-  DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const {}
 };
 
 class BranchIfInt32Compare
@@ -3967,7 +3949,9 @@ class BranchIfInt32Compare
                                 BasicBlockRef* if_false_refs)
       : Base(bitfield, if_true_refs, if_false_refs), operation_(operation) {}
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   Operation operation_;
@@ -3988,7 +3972,9 @@ class BranchIfFloat64Compare
                                   BasicBlockRef* if_false_refs)
       : Base(bitfield, if_true_refs, if_false_refs), operation_(operation) {}
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   Operation operation_;
@@ -4009,14 +3995,13 @@ class BranchIfReferenceCompare
                                     BasicBlockRef* if_false_refs)
       : Base(bitfield, if_true_refs, if_false_refs), operation_(operation) {}
 
-  DECL_NODE_INTERFACE()
+  void AllocateVreg(MaglevVregAllocationState*);
+  void GenerateCode(MaglevCodeGenState*, const ProcessingState&);
+  void PrintParams(std::ostream&, MaglevGraphLabeller*) const;
 
  private:
   Operation operation_;
 };
-
-#undef DECL_NODE_INTERFACE_WITH_EMPTY_PRINT_PARAMS
-#undef DECL_NODE_INTERFACE
 
 }  // namespace maglev
 }  // namespace internal

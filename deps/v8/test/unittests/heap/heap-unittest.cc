@@ -180,13 +180,13 @@ TEST_F(HeapTest, HeapLayout) {
 #endif  // V8_COMPRESS_POINTERS
 
 TEST_F(HeapTest, GrowAndShrinkNewSpace) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
   {
     ManualGCScope manual_gc_scope(i_isolate());
     // Avoid shrinking new space in GC epilogue. This can happen if allocation
     // throughput samples have been taken while executing the benchmark.
-    v8_flags.predictable = true;
-    v8_flags.stress_concurrent_allocation = false;  // For SimulateFullSpace.
+    FLAG_predictable = true;
+    FLAG_stress_concurrent_allocation = false;  // For SimulateFullSpace.
   }
   NewSpace* new_space = heap()->new_space();
 
@@ -228,13 +228,7 @@ TEST_F(HeapTest, GrowAndShrinkNewSpace) {
   old_capacity = new_space->TotalCapacity();
   new_space->Shrink();
   new_capacity = new_space->TotalCapacity();
-  if (v8_flags.minor_mc) {
-    // Shrinking may not be able to remove any pages if all contain live
-    // objects.
-    CHECK_GE(old_capacity, new_capacity);
-  } else {
-    CHECK_EQ(old_capacity, 2 * new_capacity);
-  }
+  CHECK_EQ(old_capacity, 2 * new_capacity);
 
   // Consecutive shrinking should not affect space capacity.
   old_capacity = new_space->TotalCapacity();
@@ -246,8 +240,8 @@ TEST_F(HeapTest, GrowAndShrinkNewSpace) {
 }
 
 TEST_F(HeapTest, CollectingAllAvailableGarbageShrinksNewSpace) {
-  if (v8_flags.single_generation) return;
-  v8_flags.stress_concurrent_allocation = false;  // For SimulateFullSpace.
+  if (FLAG_single_generation) return;
+  FLAG_stress_concurrent_allocation = false;  // For SimulateFullSpace.
   if (heap()->MaxSemiSpaceSize() == heap()->InitialSemiSpaceSize()) {
     return;
   }
@@ -271,12 +265,12 @@ TEST_F(HeapTest, CollectingAllAvailableGarbageShrinksNewSpace) {
 
 // Test that HAllocateObject will always return an object in new-space.
 TEST_F(HeapTest, OptimizedAllocationAlwaysInNewSpace) {
-  if (v8_flags.single_generation) return;
-  v8_flags.allow_natives_syntax = true;
-  v8_flags.stress_concurrent_allocation = false;  // For SimulateFullSpace.
-  if (!isolate()->use_optimizer() || v8_flags.always_turbofan) return;
-  if (v8_flags.gc_global || v8_flags.stress_compaction ||
-      v8_flags.stress_incremental_marking)
+  if (FLAG_single_generation) return;
+  FLAG_allow_natives_syntax = true;
+  FLAG_stress_concurrent_allocation = false;  // For SimulateFullSpace.
+  if (!isolate()->use_optimizer() || FLAG_always_turbofan) return;
+  if (FLAG_gc_global || FLAG_stress_compaction ||
+      FLAG_stress_incremental_marking)
     return;
   v8::Isolate* iso = reinterpret_cast<v8::Isolate*>(isolate());
   v8::HandleScope scope(iso);
@@ -325,8 +319,8 @@ static size_t GetRememberedSetSize(HeapObject obj) {
 }  // namespace
 
 TEST_F(HeapTest, RememberedSet_InsertOnPromotingObjectToOld) {
-  if (v8_flags.single_generation || v8_flags.stress_incremental_marking) return;
-  v8_flags.stress_concurrent_allocation = false;  // For SealCurrentObjects.
+  if (FLAG_single_generation || FLAG_stress_incremental_marking) return;
+  FLAG_stress_concurrent_allocation = false;  // For SealCurrentObjects.
   Factory* factory = isolate()->factory();
   Heap* heap = isolate()->heap();
   SealCurrentObjects();
@@ -335,7 +329,7 @@ TEST_F(HeapTest, RememberedSet_InsertOnPromotingObjectToOld) {
   // Create a young object and age it one generation inside the new space.
   Handle<FixedArray> arr = factory->NewFixedArray(1);
   std::vector<Handle<FixedArray>> handles;
-  if (v8_flags.minor_mc) {
+  if (FLAG_minor_mc) {
     NewSpace* new_space = heap->new_space();
     CHECK(!new_space->IsAtMaximumCapacity());
     // Fill current pages to force MinorMC to promote them.
@@ -365,15 +359,16 @@ TEST_F(HeapTest, RememberedSet_InsertOnPromotingObjectToOld) {
 }
 
 TEST_F(HeapTest, Regress978156) {
-  if (!v8_flags.incremental_marking) return;
-  if (v8_flags.single_generation) return;
+  if (!FLAG_incremental_marking) return;
+  if (FLAG_single_generation) return;
   ManualGCScope manual_gc_scope(isolate());
 
   HandleScope handle_scope(isolate());
   Heap* heap = isolate()->heap();
 
   // 1. Ensure that the new space is empty.
-  GcAndSweep(OLD_SPACE);
+  CollectGarbage(NEW_SPACE);
+  CollectGarbage(NEW_SPACE);
   // 2. Fill the new space with FixedArrays.
   std::vector<Handle<FixedArray>> arrays;
   SimulateFullSpace(heap->new_space(), &arrays);

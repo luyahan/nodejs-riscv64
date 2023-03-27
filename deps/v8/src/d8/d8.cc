@@ -34,7 +34,6 @@
 #include "src/api/api-inl.h"
 #include "src/base/cpu.h"
 #include "src/base/logging.h"
-#include "src/base/platform/memory.h"
 #include "src/base/platform/platform.h"
 #include "src/base/platform/time.h"
 #include "src/base/platform/wrappers.h"
@@ -5251,11 +5250,7 @@ class Serializer : public ValueSerializer::Delegate {
 
   void FreeBufferMemory(void* buffer) override { base::Free(buffer); }
 
-  bool AdoptSharedValueConveyor(Isolate* isolate,
-                                SharedValueConveyor&& conveyor) override {
-    data_->shared_value_conveyor_.emplace(std::move(conveyor));
-    return true;
-  }
+  bool SupportsSharedValues() const override { return true; }
 
  private:
   Maybe<bool> PrepareTransfer(Local<Context> context, Local<Value> transfer) {
@@ -5314,7 +5309,6 @@ class Serializer : public ValueSerializer::Delegate {
     return Just(true);
   }
 
-  // This must come before ValueSerializer as it caches this value.
   Isolate* isolate_;
   ValueSerializer serializer_;
   std::unique_ptr<SerializationData> data_;
@@ -5371,13 +5365,7 @@ class Deserializer : public ValueDeserializer::Delegate {
         isolate_, data_->compiled_wasm_modules().at(transfer_id));
   }
 
-  const SharedValueConveyor* GetSharedValueConveyor(Isolate* isolate) override {
-    DCHECK_NOT_NULL(data_);
-    if (data_->shared_value_conveyor()) {
-      return &data_->shared_value_conveyor().value();
-    }
-    return nullptr;
-  }
+  bool SupportsSharedValues() const override { return true; }
 
  private:
   Isolate* isolate_;

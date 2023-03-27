@@ -1035,7 +1035,8 @@ Handle<ArrayList> AddWasmTableObjectInternalProperties(
   int length = table->current_length();
   Handle<FixedArray> entries = isolate->factory()->NewFixedArray(length);
   for (int i = 0; i < length; ++i) {
-    Handle<Object> entry = WasmTableObject::Get(isolate, table, i);
+    Handle<Object> entry =
+        WasmTableObject::Get(isolate, table, i, WasmTableObject::kWasm);
     wasm::WasmValue wasm_value(entry, table->type());
     Handle<WasmModuleObject> module(
         WasmInstanceObject::cast(table->instance()).module_object(), isolate);

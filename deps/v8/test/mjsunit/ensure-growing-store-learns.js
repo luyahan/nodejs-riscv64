@@ -53,6 +53,8 @@
   assertOptimized(foo);
   assertTrue(%HasDictionaryElements(b));
 
+  // Clearing feedback for the StoreIC in foo is important for runs with
+  // flag --stress-opt.
   %ClearFunctionFeedback(foo);
 })();
 

@@ -17,7 +17,7 @@ d8.file.execute("test/mjsunit/wasm/wasm-module-builder.js");
       kGCPrefix, kExprStructNew, struct,
       kExprLocalSet, 1,
       kExprLocalGet, 1,
-      kGCPrefix, kExprRefCastNop, struct,
+      kGCPrefix, kExprRefCastNopStatic, struct,
       kGCPrefix, kExprStructGet, struct, 0,
   ]).exportFunc();
 

@@ -830,7 +830,8 @@ void HeapObject::set_map(Map value, MemoryOrder order, VerificationMode mode) {
   // background threads.
   DCHECK_IMPLIES(mode != VerificationMode::kSafeMapTransition,
                  !LocalHeap::Current());
-  if (v8_flags.verify_heap && !value.is_null()) {
+#ifdef VERIFY_HEAP
+  if (FLAG_verify_heap && !value.is_null()) {
     Heap* heap = GetHeapFromWritableObject(*this);
     if (mode == VerificationMode::kSafeMapTransition) {
       HeapVerifier::VerifySafeMapTransition(heap, *this, value);
@@ -839,6 +840,7 @@ void HeapObject::set_map(Map value, MemoryOrder order, VerificationMode mode) {
       HeapVerifier::VerifyObjectLayoutChange(heap, *this, value);
     }
   }
+#endif
   set_map_word(MapWord::FromMap(value), order);
 #ifndef V8_DISABLE_WRITE_BARRIERS
   if (!value.is_null()) {
@@ -1176,7 +1178,7 @@ bool Object::IsShared() const {
       return true;
     case INTERNALIZED_STRING_TYPE:
     case ONE_BYTE_INTERNALIZED_STRING_TYPE:
-      if (v8_flags.shared_string_table) {
+      if (FLAG_shared_string_table) {
         DCHECK(object.InSharedHeap());
         return true;
       }

@@ -159,30 +159,24 @@ class WithIsolateScopeMixin : public TMixin {
         .ToLocalChecked();
   }
 
-  void CollectGarbage(i::AllocationSpace space, i::Isolate* isolate = nullptr) {
-    i::Isolate* iso = isolate ? isolate : i_isolate();
-    iso->heap()->CollectGarbage(space, i::GarbageCollectionReason::kTesting,
-                                kNoGCCallbackFlags);
+  void CollectGarbage(i::AllocationSpace space) {
+    i_isolate()->heap()->CollectGarbage(space,
+                                        i::GarbageCollectionReason::kTesting);
   }
 
-  void CollectAllGarbage(i::Isolate* isolate = nullptr) {
-    i::Isolate* iso = isolate ? isolate : i_isolate();
-    iso->heap()->CollectAllGarbage(i::Heap::kNoGCFlags,
-                                   i::GarbageCollectionReason::kTesting,
-                                   kNoGCCallbackFlags);
+  void CollectAllGarbage() {
+    i_isolate()->heap()->CollectAllGarbage(
+        i::Heap::kNoGCFlags, i::GarbageCollectionReason::kTesting);
   }
 
-  void CollectAllAvailableGarbage(i::Isolate* isolate = nullptr) {
-    i::Isolate* iso = isolate ? isolate : i_isolate();
-    iso->heap()->CollectAllAvailableGarbage(
+  void CollectAllAvailableGarbage() {
+    i_isolate()->heap()->CollectAllAvailableGarbage(
         i::GarbageCollectionReason::kTesting);
   }
 
-  void PreciseCollectAllGarbage(i::Isolate* isolate = nullptr) {
-    i::Isolate* iso = isolate ? isolate : i_isolate();
-    iso->heap()->PreciseCollectAllGarbage(i::Heap::kNoGCFlags,
-                                          i::GarbageCollectionReason::kTesting,
-                                          kNoGCCallbackFlags);
+  void PreciseCollectAllGarbage() {
+    i_isolate()->heap()->PreciseCollectAllGarbage(
+        i::Heap::kNoGCFlags, i::GarbageCollectionReason::kTesting);
   }
 
   v8::Local<v8::String> NewString(const char* string) {
@@ -193,13 +187,6 @@ class WithIsolateScopeMixin : public TMixin {
     while (v8::platform::PumpMessageLoop(internal::V8::GetCurrentPlatform(),
                                          this->v8_isolate())) {
     }
-  }
-
-  void ExpectString(const char* code, const char* expected) {
-    v8::Local<v8::Value> result = RunJS(code);
-    CHECK(result->IsString());
-    v8::String::Utf8Value utf8(v8::Isolate::GetCurrent(), result);
-    CHECK_EQ(0, strcmp(expected, *utf8));
   }
 
  private:

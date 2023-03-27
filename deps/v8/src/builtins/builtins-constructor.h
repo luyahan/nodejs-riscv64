@@ -16,9 +16,8 @@ namespace internal {
 class ConstructorBuiltins {
  public:
   static int MaximumFunctionContextSlots() {
-    return v8_flags.test_small_max_function_context_stub_size
-               ? kSmallMaximumSlots
-               : kMaximumSlots;
+    return FLAG_test_small_max_function_context_stub_size ? kSmallMaximumSlots
+                                                          : kMaximumSlots;
   }
 
   // Maximum number of elements in copied array (chosen so that even an array

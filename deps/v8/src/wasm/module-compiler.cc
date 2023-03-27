@@ -5,9 +5,7 @@
 #include "src/wasm/module-compiler.h"
 
 #include <algorithm>
-#include <mutex>  // NOLINT(build/c++11)
 #include <queue>
-#include <shared_mutex>
 
 #include "src/api/api-inl.h"
 #include "src/base/enum-set.h"
@@ -138,14 +136,14 @@ class CompilationUnitQueues {
   Queue* GetQueueForTask(int task_id) {
     int required_queues = task_id + 1;
     {
-      std::shared_lock<std::shared_mutex> queues_guard{queues_mutex_};
+      base::SharedMutexGuard<base::kShared> queues_guard(&queues_mutex_);
       if (V8_LIKELY(static_cast<int>(queues_.size()) >= required_queues)) {
         return queues_[task_id].get();
       }
     }
 
     // Otherwise increase the number of queues.
-    std::unique_lock<std::shared_mutex> queues_guard{queues_mutex_};
+    base::SharedMutexGuard<base::kExclusive> queues_guard(&queues_mutex_);
     int num_queues = static_cast<int>(queues_.size());
     while (num_queues < required_queues) {
       int steal_from = num_queues + 1;
@@ -200,7 +198,7 @@ class CompilationUnitQueues {
     QueueImpl* queue;
     {
       int queue_to_add = next_queue_to_add.load(std::memory_order_relaxed);
-      std::shared_lock<std::shared_mutex> queues_guard{queues_mutex_};
+      base::SharedMutexGuard<base::kShared> queues_guard(&queues_mutex_);
       while (!next_queue_to_add.compare_exchange_weak(
           queue_to_add, next_task_id(queue_to_add, queues_.size()),
           std::memory_order_relaxed)) {
@@ -234,7 +232,7 @@ class CompilationUnitQueues {
   }
 
   void AddTopTierPriorityUnit(WasmCompilationUnit unit, size_t priority) {
-    std::shared_lock<std::shared_mutex> queues_guard{queues_mutex_};
+    base::SharedMutexGuard<base::kShared> queues_guard(&queues_mutex_);
     // Add to the individual queues in a round-robin fashion. No special care is
     // taken to balance them; they will be balanced by work stealing.
     // Priorities should only be seen as a hint here; without balancing, we
@@ -382,7 +380,7 @@ class CompilationUnitQueues {
     // Try to steal from all other queues. If this succeeds, return one of the
     // stolen units.
     {
-      std::shared_lock<std::shared_mutex> guard{queues_mutex_};
+      base::SharedMutexGuard<base::kShared> guard(&queues_mutex_);
       for (size_t steal_trials = 0; steal_trials < queues_.size();
            ++steal_trials, ++steal_task_id) {
         if (steal_task_id >= static_cast<int>(queues_.size())) {
@@ -439,7 +437,7 @@ class CompilationUnitQueues {
     // Try to steal from all other queues. If this succeeds, return one of the
     // stolen units.
     {
-      std::shared_lock<std::shared_mutex> guard{queues_mutex_};
+      base::SharedMutexGuard<base::kShared> guard(&queues_mutex_);
       for (size_t steal_trials = 0; steal_trials < queues_.size();
            ++steal_trials, ++steal_task_id) {
         if (steal_task_id >= static_cast<int>(queues_.size())) {
@@ -514,7 +512,7 @@ class CompilationUnitQueues {
   }
 
   // {queues_mutex_} protectes {queues_};
-  std::shared_mutex queues_mutex_;
+  base::SharedMutex queues_mutex_;
   std::vector<std::unique_ptr<QueueImpl>> queues_;
 
   const int num_declared_functions_;
@@ -1285,30 +1283,21 @@ void ThrowLazyCompilationError(Isolate* isolate,
 
 class TransitiveTypeFeedbackProcessor {
  public:
-  static void Process(WasmInstanceObject instance, int func_index) {
-    TransitiveTypeFeedbackProcessor{instance, func_index}.ProcessQueue();
-  }
-
- private:
   TransitiveTypeFeedbackProcessor(WasmInstanceObject instance, int func_index)
       : instance_(instance),
         module_(instance.module()),
         mutex_guard(&module_->type_feedback.mutex),
         feedback_for_function_(module_->type_feedback.feedback_for_function) {
     queue_.insert(func_index);
-  }
-
-  ~TransitiveTypeFeedbackProcessor() { DCHECK(queue_.empty()); }
-
-  void ProcessQueue() {
     while (!queue_.empty()) {
       auto next = queue_.cbegin();
-      ProcessFunction(*next);
+      Process(*next);
       queue_.erase(next);
     }
   }
 
-  void ProcessFunction(int func_index);
+ private:
+  void Process(int func_index);
 
   void EnqueueCallees(const std::vector<CallSiteFeedback>& feedback) {
     for (size_t i = 0; i < feedback.size(); i++) {
@@ -1415,7 +1404,7 @@ class FeedbackMaker {
   int counts_cache_[kMaxPolymorphism];
 };
 
-void TransitiveTypeFeedbackProcessor::ProcessFunction(int func_index) {
+void TransitiveTypeFeedbackProcessor::Process(int func_index) {
   int which_vector = declared_function_index(module_, func_index);
   Object maybe_feedback = instance_.feedback_vectors().get(which_vector);
   if (!maybe_feedback.IsFixedArray()) return;
@@ -1423,7 +1412,6 @@ void TransitiveTypeFeedbackProcessor::ProcessFunction(int func_index) {
   base::Vector<uint32_t> call_direct_targets =
       module_->type_feedback.feedback_for_function[func_index]
           .call_targets.as_vector();
-  DCHECK_EQ(feedback.length(), call_direct_targets.size() * 2);
   FeedbackMaker fm(instance_, func_index, feedback.length() / 2);
   for (int i = 0; i < feedback.length(); i += 2) {
     Object value = feedback.get(i);
@@ -1491,7 +1479,7 @@ void TriggerTierUp(WasmInstanceObject instance, int func_index) {
     // TODO(jkummerow): we could have collisions here if different instances
     // of the same module have collected different feedback. If that ever
     // becomes a problem, figure out a solution.
-    TransitiveTypeFeedbackProcessor::Process(instance, func_index);
+    TransitiveTypeFeedbackProcessor process(instance, func_index);
   }
 
   compilation_state->AddTopTierPriorityCompilationUnit(tiering_unit, priority);
@@ -1500,7 +1488,7 @@ void TriggerTierUp(WasmInstanceObject instance, int func_index) {
 void TierUpNowForTesting(Isolate* isolate, WasmInstanceObject instance,
                          int func_index) {
   if (v8_flags.wasm_speculative_inlining) {
-    TransitiveTypeFeedbackProcessor::Process(instance, func_index);
+    TransitiveTypeFeedbackProcessor process(instance, func_index);
   }
   auto* native_module = instance.module_object().native_module();
   wasm::GetWasmEngine()->CompileFunction(isolate, native_module, func_index,

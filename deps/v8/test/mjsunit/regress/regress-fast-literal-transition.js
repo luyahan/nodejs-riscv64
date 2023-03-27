@@ -32,7 +32,9 @@
 // boilerplate. The --always-turbofan flag makes sure that optimized code is
 // not thrown away at deoptimization.
 
-// The switch statement in f() makes sure that f() is not inlined.
+// The switch statement in f() makes sure that f() is not inlined. If we
+// start inlining switch statements, we will still catch the bug on the
+// final --stress-opt run.
 
 function f(x) {
   switch (x) {

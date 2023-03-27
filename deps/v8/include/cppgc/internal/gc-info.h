@@ -48,6 +48,7 @@ struct V8_EXPORT EnsureGCInfoIndexTrait final {
   static GCInfoIndex EnsureGCInfoIndexNonPolymorphic(std::atomic<GCInfoIndex>&,
                                                      TraceCallback,
                                                      FinalizationCallback,
+
                                                      NameCallback);
   static GCInfoIndex EnsureGCInfoIndexNonPolymorphic(std::atomic<GCInfoIndex>&,
                                                      TraceCallback,

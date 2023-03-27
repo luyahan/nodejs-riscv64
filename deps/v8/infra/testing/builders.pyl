@@ -77,8 +77,8 @@
       {'name': 'mozilla', 'variant': 'extra'},
       {'name': 'test262', 'variant': 'default', 'shards': 2},
       {'name': 'test262', 'variant': 'extra', 'shards': 5},
-      {'name': 'v8testing', 'shards': 4},
-      {'name': 'v8testing', 'variant': 'extra', 'shards': 4},
+      {'name': 'v8testing', 'shards': 3},
+      {'name': 'v8testing', 'variant': 'extra', 'shards': 2},
       # Noavx.
       {
         'name': 'mozilla',
@@ -95,17 +95,7 @@
         'name': 'v8testing',
         'suffix': 'noavx',
         'test_args': ['--extra-flags', '--noenable-avx'],
-        'shards': 4
-      },
-      # Nosse3.
-      {
-        'name': 'v8testing',
-        'suffix': 'nosse3',
-        'test_args': [
-          '--extra-flags',
-          '--noenable-sse3 --noenable-ssse3 --noenable-sse4-1 --noenable-avx',
-        ],
-        'shards': 4,
+        'shards': 2
       },
     ],
   },
@@ -132,15 +122,6 @@
       {'name': 'test262', 'variant': 'extra', 'shards': 2},
       {'name': 'v8testing', 'shards': 2},
       {'name': 'v8testing', 'variant': 'extra'},
-      {
-        'name': 'v8testing',
-        'suffix': 'nosse3',
-        'test_args': [
-          '--extra-flags',
-          '--noenable-sse3 --noenable-ssse3 --noenable-sse4-1 --noenable-avx',
-        ],
-        'shards': 2,
-      },
     ],
   },
   'v8_linux_noi18n_rel_ng_triggered': {
@@ -171,15 +152,6 @@
       {'name': 'v8testing', 'shards': 4},
       {'name': 'v8testing', 'suffix': 'isolates', 'test_args': ['--isolates'], 'shards': 4},
       {'name': 'v8testing', 'variant': 'extra', 'shards': 4},
-      {
-        'name': 'v8testing',
-        'suffix': 'nosse3',
-        'test_args': [
-          '--extra-flags',
-          '--noenable-sse3 --noenable-ssse3 --noenable-sse4-1 --noenable-avx',
-        ],
-        'shards': 4,
-      },
     ],
   },
   'v8_linux_optional_rel_ng_triggered': {
@@ -376,7 +348,6 @@
       {'name': 'test262', 'variant': 'extra', 'shards': 9},
       {'name': 'v8testing', 'shards': 5},
       {'name': 'v8testing', 'variant': 'extra', 'shards': 5},
-      {'name': 'v8testing', 'variant': 'minor_mc'},
       {'name': 'v8testing', 'variant': 'no_lfa'},
       {'name': 'v8testing', 'variant': 'stress_instruction_scheduling'},
       {'name': 'v8testing', 'variant': 'stress_concurrent_allocation'},
@@ -432,8 +403,6 @@
       {'name': 'mjsunit', 'variant': 'stress_snapshot'},
       # Maglev.
       {'name': 'mjsunit', 'variant': 'maglev'},
-      # Stress maglev.
-      {'name': 'mjsunit', 'variant': 'stress_maglev'},
       # Experimental regexp engine.
       {'name': 'mjsunit', 'variant': 'experimental_regexp'},
       # Wasm write protect code space.
@@ -504,10 +473,6 @@
     },
     'tests': [
       {'name': 'v8testing', 'variant': 'minor_mc'},
-      {'name': 'benchmarks', 'variant': 'minor_mc'},
-      {'name': 'mozilla', 'variant': 'minor_mc'},
-      {'name': 'test262', 'variant': 'minor_mc', 'shards': 2},
-      {'name': 'mjsunit', 'variant': 'minor_mc'},
     ],
   },
   'v8_linux64_msan_rel_ng_triggered': {
@@ -593,7 +558,6 @@
       {'name': 'v8initializers'},
       {'name': 'v8testing', 'shards': 2},
       {'name': 'v8testing', 'variant': 'extra', 'shards': 2},
-      {'name': 'v8testing', 'variant': 'minor_mc'},
       {'name': 'v8testing', 'variant': 'no_lfa'},
       {'name': 'v8testing', 'variant': 'slow_path'},
       {'name': 'v8testing', 'variant': 'stress_instruction_scheduling'},
@@ -1207,6 +1171,16 @@
       {'name': 'v8testing', 'variant': 'default'},
     ],
   },
+  'V8 Linux - predictable': {
+    'swarming_dimensions': {
+      'os': 'Ubuntu-18.04',
+    },
+    'tests': [
+      {'name': 'benchmarks'},
+      {'name': 'd8testing'},
+      {'name': 'mozilla'},
+    ],
+  },
   'V8 Linux64 - predictable': {
     'swarming_dimensions': {
       'cpu': 'x86-64-avx2',
@@ -1259,7 +1233,6 @@
       {'name': 'v8testing'},
       {'name': 'v8testing', 'variant': 'assert_types'},
       {'name': 'v8testing', 'variant': 'extra'},
-      {'name': 'v8testing', 'variant': 'minor_mc'},
       {'name': 'v8testing', 'variant': 'no_lfa'},
       {'name': 'v8testing', 'variant': 'stress_instruction_scheduling'},
       # Maglev -- move to extra once more architectures are supported.
@@ -1319,7 +1292,6 @@
       {'name': 'test262', 'variant': 'extra', 'shards': 5},
       {'name': 'v8testing', 'shards': 2},
       {'name': 'v8testing', 'variant': 'extra', 'shards': 2},
-      {'name': 'v8testing', 'variant': 'minor_mc'},
       {'name': 'v8testing', 'variant': 'no_lfa'},
       {'name': 'v8testing', 'variant': 'slow_path'},
       {'name': 'v8testing', 'variant': 'stress_instruction_scheduling'},
@@ -1354,10 +1326,6 @@
     },
     'tests': [
       {'name': 'v8testing', 'variant': 'minor_mc'},
-      {'name': 'benchmarks', 'variant': 'minor_mc'},
-      {'name': 'mozilla', 'variant': 'minor_mc'},
-      {'name': 'test262', 'variant': 'minor_mc', 'shards': 2},
-      {'name': 'mjsunit', 'variant': 'minor_mc'},
     ],
   },
   'V8 Linux64 - disable runtime call stats': {
@@ -1382,8 +1350,6 @@
       {'name': 'mjsunit', 'variant': 'stress_snapshot'},
       # Maglev.
       {'name': 'mjsunit', 'variant': 'maglev'},
-      # Stress maglev.
-      {'name': 'mjsunit', 'variant': 'stress_maglev'},
       # Experimental regexp engine.
       {'name': 'mjsunit', 'variant': 'experimental_regexp'},
       # Wasm write protect code space.
@@ -1448,8 +1414,6 @@
       {'name': 'mjsunit', 'variant': 'stress_snapshot'},
       # Maglev.
       {'name': 'mjsunit', 'variant': 'maglev'},
-      # Stress maglev.
-      {'name': 'mjsunit', 'variant': 'stress_maglev'},
       # Experimental regexp engine.
       {'name': 'mjsunit', 'variant': 'experimental_regexp'},
       # Wasm write protect code space.

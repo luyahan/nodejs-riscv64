@@ -92,13 +92,7 @@ AllocationResult HeapAllocator::AllocateRawWithLightRetrySlowPath(
     if (IsSharedAllocationType(allocation)) {
       heap_->CollectSharedGarbage(GarbageCollectionReason::kAllocationFailure);
     } else {
-      AllocationSpace space_to_gc = AllocationTypeToGCSpace(allocation);
-      if (v8_flags.minor_mc && i > 0) {
-        // Repeated young gen GCs won't have any additional effect. Do a full GC
-        // instead.
-        space_to_gc = AllocationSpace::OLD_SPACE;
-      }
-      heap_->CollectGarbage(space_to_gc,
+      heap_->CollectGarbage(AllocationTypeToGCSpace(allocation),
                             GarbageCollectionReason::kAllocationFailure);
     }
     result = AllocateRaw(size, allocation, origin, alignment);
@@ -152,7 +146,7 @@ void HeapAllocator::IncrementObjectCounters() {
 #ifdef V8_ENABLE_ALLOCATION_TIMEOUT
 // static
 void HeapAllocator::InitializeOncePerProcess() {
-  SetAllocationGcInterval(v8_flags.gc_interval);
+  SetAllocationGcInterval(FLAG_gc_interval);
 }
 
 // static
@@ -171,10 +165,10 @@ void HeapAllocator::SetAllocationTimeout(int allocation_timeout) {
 }
 
 void HeapAllocator::UpdateAllocationTimeout() {
-  if (v8_flags.random_gc_interval > 0) {
+  if (FLAG_random_gc_interval > 0) {
     const int new_timeout = allocation_timeout_ <= 0
                                 ? heap_->isolate()->fuzzer_rng()->NextInt(
-                                      v8_flags.random_gc_interval + 1)
+                                      FLAG_random_gc_interval + 1)
                                 : allocation_timeout_;
     // Reset the allocation timeout, but make sure to allow at least a few
     // allocations after a collection. The reason for this is that we have a lot

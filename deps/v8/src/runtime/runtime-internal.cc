@@ -350,11 +350,7 @@ RUNTIME_FUNCTION(Runtime_StackGuardWithGap) {
   return isolate->stack_guard()->HandleInterrupts();
 }
 
-namespace {
-
-Object BytecodeBudgetInterruptWithStackCheck(Isolate* isolate,
-                                             RuntimeArguments& args,
-                                             CodeKind code_kind) {
+RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheck) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
   Handle<JSFunction> function = args.at<JSFunction>(0);
@@ -376,43 +372,18 @@ Object BytecodeBudgetInterruptWithStackCheck(Isolate* isolate,
     }
   }
 
-  isolate->tiering_manager()->OnInterruptTick(function, code_kind);
+  isolate->tiering_manager()->OnInterruptTick(function);
   return ReadOnlyRoots(isolate).undefined_value();
 }
 
-Object BytecodeBudgetInterrupt(Isolate* isolate, RuntimeArguments& args,
-                               CodeKind code_kind) {
+RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterrupt) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
   Handle<JSFunction> function = args.at<JSFunction>(0);
   TRACE_EVENT0("v8.execute", "V8.BytecodeBudgetInterrupt");
 
-  isolate->tiering_manager()->OnInterruptTick(function, code_kind);
+  isolate->tiering_manager()->OnInterruptTick(function);
   return ReadOnlyRoots(isolate).undefined_value();
-}
-
-}  // namespace
-
-RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheck_Ignition) {
-  return BytecodeBudgetInterruptWithStackCheck(isolate, args,
-                                               CodeKind::INTERPRETED_FUNCTION);
-}
-
-RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterrupt_Ignition) {
-  return BytecodeBudgetInterrupt(isolate, args, CodeKind::INTERPRETED_FUNCTION);
-}
-
-RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheck_Sparkplug) {
-  return BytecodeBudgetInterruptWithStackCheck(isolate, args,
-                                               CodeKind::BASELINE);
-}
-
-RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterrupt_Sparkplug) {
-  return BytecodeBudgetInterrupt(isolate, args, CodeKind::BASELINE);
-}
-
-RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheck_Maglev) {
-  return BytecodeBudgetInterruptWithStackCheck(isolate, args, CodeKind::MAGLEV);
 }
 
 namespace {

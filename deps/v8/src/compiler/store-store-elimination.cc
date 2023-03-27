@@ -46,6 +46,24 @@ namespace {
 
 using StoreOffset = uint32_t;
 
+struct UnobservableStore {
+  NodeId id_;
+  StoreOffset offset_;
+  bool maybe_gc_observable_ = false;
+
+  bool operator==(const UnobservableStore other) const {
+    return (id_ == other.id_) && (offset_ == other.offset_);
+  }
+
+  bool operator<(const UnobservableStore other) const {
+    return (id_ < other.id_) || (id_ == other.id_ && offset_ < other.offset_);
+  }
+};
+
+size_t hash_value(const UnobservableStore& p) {
+  return base::hash_combine(p.id_, p.offset_);
+}
+
 // Instances of UnobservablesSet are immutable. They represent either a set of
 // UnobservableStores, or the "unvisited empty set".
 //
@@ -57,9 +75,19 @@ using StoreOffset = uint32_t;
 // space in the zone in the case of non-unvisited UnobservablesSets. Copying
 // an UnobservablesSet allocates no memory.
 class UnobservablesSet final {
+ private:
+  enum ObservableState {
+    kObservable = 0,    // We haven't seen a store to this offset before.
+    kUnobservable = 1,  // Stores to the same offset can be eliminated.
+    kGCObservable = 2   // Stores to the same offset can only be eliminated,
+                        // if they are not initializing or transitioning.
+  };
+
+  using KeyT = UnobservableStore;
+  using ValueT = ObservableState;
+
  public:
-  using InnerSetT = PersistentMap<NodeId, bool>;
-  using SetT = PersistentMap<StoreOffset, InnerSetT>;
+  using SetT = PersistentMap<KeyT, ValueT>;
 
   // Creates a new UnobservablesSet, with the null set.
   static UnobservablesSet Unvisited() { return UnobservablesSet(); }
@@ -71,6 +99,10 @@ class UnobservablesSet final {
   UnobservablesSet& operator=(const UnobservablesSet& other)
       V8_NOEXCEPT = default;
 
+  // Computes the intersection of two states.
+  ObservableState Intersect(const ObservableState state1,
+                            const ObservableState state2) const;
+
   // Computes the intersection of two UnobservablesSets. If one of the sets is
   // empty, will return empty.
   UnobservablesSet Intersect(const UnobservablesSet& other,
@@ -79,11 +111,13 @@ class UnobservablesSet final {
   // Returns a set that it is the current one, plus the observation obs passed
   // as parameter. If said obs it's already unobservable, we don't have to
   // create a new one.
-  UnobservablesSet Add(NodeId node, StoreOffset offset, Zone* zone) const;
+  UnobservablesSet Add(UnobservableStore obs, Zone* zone) const;
 
   // Returns a set that it is the current one, except for all of the
   // observations with offset off. This is done by creating a new set and
   // copying all observations with different offsets.
+  // This can probably be done better if the observations are stored first by
+  // offset and then by node.
   // We are removing all nodes with offset off since different nodes may
   // alias one another, and currently we don't have the means to know if
   // two nodes are definitely the same value.
@@ -93,14 +127,11 @@ class UnobservablesSet final {
   // by GC.
   UnobservablesSet MarkGCObservable(Zone* zone) const;
 
-  bool IsUnvisited() const {
-    DCHECK_EQ(unobservable_ == nullptr, gc_observable_ == nullptr);
-    return unobservable_ == nullptr;
-  }
+  const SetT* set() const { return set_; }
+
+  bool IsUnvisited() const { return set_ == nullptr; }
   bool IsEmpty() const {
-    if (IsUnvisited()) return true;
-    return unobservable_->begin() == unobservable_->end() &&
-           gc_observable_->begin() == gc_observable_->end();
+    return set_ == nullptr || set_->begin() == set_->end();
   }
 
   // We need to guarantee that objects are fully initialized and fields are in
@@ -108,19 +139,23 @@ class UnobservablesSet final {
   // Therefore initializing or transitioning stores are observable if they are
   // observable by GC. All other stores are not relevant for correct GC
   // behaviour and can be eliminated even if they are observable by GC.
-  bool IsUnobservable(NodeId node, StoreOffset offset,
+  bool IsUnobservable(UnobservableStore obs,
                       bool maybe_initializing_or_transitioning) const {
-    if (unobservable_ != nullptr && unobservable_->Get(offset).Get(node)) {
-      return true;
+    if (set_ == nullptr) return false;
+    ObservableState state = set_->Get(obs);
+    switch (state) {
+      case kUnobservable:
+        return true;
+      case kObservable:
+        return false;
+      case kGCObservable:
+        return !maybe_initializing_or_transitioning;
     }
-    if (!maybe_initializing_or_transitioning && IsGCObservable(node, offset)) {
-      return true;
-    }
-    return false;
+    UNREACHABLE();
   }
 
-  bool IsGCObservable(NodeId node, StoreOffset offset) const {
-    return gc_observable_ != nullptr && gc_observable_->Get(offset).Get(node);
+  bool IsGCObservable(UnobservableStore obs) const {
+    return set_ != nullptr && set_->Get(obs) == kGCObservable;
   }
 
   bool operator==(const UnobservablesSet& other) const {
@@ -128,8 +163,7 @@ class UnobservablesSet final {
       return IsEmpty() && other.IsEmpty();
     } else {
       // Both pointers guaranteed not to be nullptrs.
-      return *unobservable_ == *(other.unobservable_) &&
-             *gc_observable_ == *other.gc_observable_;
+      return *set() == *(other.set());
     }
   }
 
@@ -139,15 +173,23 @@ class UnobservablesSet final {
 
  private:
   UnobservablesSet() = default;
-  explicit UnobservablesSet(const SetT* unobservable, const SetT* gc_observable)
-      : unobservable_(unobservable), gc_observable_(gc_observable) {}
+  explicit UnobservablesSet(const SetT* set) : set_(set) {}
 
   static SetT* NewSet(Zone* zone) {
-    return zone->New<UnobservablesSet::SetT>(zone, InnerSetT(zone));
+    return zone->New<UnobservablesSet::SetT>(zone, kObservable);
   }
 
-  const SetT* unobservable_ = nullptr;
-  const SetT* gc_observable_ = nullptr;
+  static void SetAdd(SetT* set, const KeyT& key) {
+    set->Set(key, kUnobservable);
+  }
+  static void SetErase(SetT* set, const KeyT& key) {
+    set->Set(key, kObservable);
+  }
+  static void SetGCObservable(SetT* set, const KeyT& key) {
+    set->Set(key, kGCObservable);
+  }
+
+  const SetT* set_ = nullptr;
 };
 
 class RedundantStoreFinder final {
@@ -274,9 +316,9 @@ UnobservablesSet RedundantStoreFinder::RecomputeSet(
       const FieldAccess& access = FieldAccessOf(node->op());
       StoreOffset offset = ToOffset(access);
 
-      const bool is_not_observable =
-          uses.IsUnobservable(stored_to->id(), offset,
-                              access.maybe_initializing_or_transitioning_store);
+      UnobservableStore observation = {stored_to->id(), offset};
+      const bool is_not_observable = uses.IsUnobservable(
+          observation, access.maybe_initializing_or_transitioning_store);
 
       if (is_not_observable) {
         TRACE("  #%d is StoreField[+%d,%s](#%d), unobservable", node->id(),
@@ -287,7 +329,7 @@ UnobservablesSet RedundantStoreFinder::RecomputeSet(
       } else {
         const bool is_gc_observable =
             access.maybe_initializing_or_transitioning_store &&
-            uses.IsGCObservable(stored_to->id(), offset);
+            uses.IsGCObservable(observation);
         // A GC observable store could have been unobservable in a previous
         // visit. This is possible if the node that previously shadowed the
         // initializing store is now unobservable, due to additional stores
@@ -308,7 +350,7 @@ UnobservablesSet RedundantStoreFinder::RecomputeSet(
             node->id(), offset,
             MachineReprToString(access.machine_type.representation()),
             stored_to->id(), is_gc_observable ? " by GC" : "");
-        return uses.Add(stored_to->id(), offset, temp_zone());
+        return uses.Add(observation, temp_zone());
       }
     }
     case IrOpcode::kLoadField: {
@@ -352,14 +394,10 @@ UnobservablesSet RedundantStoreFinder::RecomputeSet(
 
 bool RedundantStoreFinder::CannotObserveStoreField(Node* node) {
   IrOpcode::Value opcode = node->opcode();
-  constexpr uint8_t cannot_observe = Operator::kNoRead | Operator::kNoWrite |
-                                     Operator::kNoThrow | Operator::kNoDeopt;
-  return ((node->op()->properties() & cannot_observe) == cannot_observe) ||
-         opcode == IrOpcode::kLoadElement || opcode == IrOpcode::kLoad ||
+  return opcode == IrOpcode::kLoadElement || opcode == IrOpcode::kLoad ||
          opcode == IrOpcode::kLoadImmutable || opcode == IrOpcode::kStore ||
-         opcode == IrOpcode::kStoreElement ||
-         opcode == IrOpcode::kBitcastWordToTagged ||
-         opcode == IrOpcode::kBitcastTaggedToWord;
+         opcode == IrOpcode::kEffectPhi || opcode == IrOpcode::kStoreElement ||
+         opcode == IrOpcode::kRetain;
 }
 
 void RedundantStoreFinder::Visit(Node* node) {
@@ -465,7 +503,17 @@ UnobservablesSet RedundantStoreFinder::RecomputeUseIntersection(Node* node) {
 }
 
 UnobservablesSet UnobservablesSet::VisitedEmpty(Zone* zone) {
-  return UnobservablesSet(NewSet(zone), NewSet(zone));
+  return UnobservablesSet(NewSet(zone));
+}
+
+UnobservablesSet::ObservableState UnobservablesSet::Intersect(
+    const ObservableState state1, const ObservableState state2) const {
+  if (state1 == state2) return state1;
+  if (state1 == kObservable || state2 == kObservable) return kObservable;
+  if (state1 == kGCObservable || state2 == kGCObservable) {
+    return kGCObservable;
+  }
+  UNREACHABLE();
 }
 
 UnobservablesSet UnobservablesSet::Intersect(const UnobservablesSet& other,
@@ -473,73 +521,52 @@ UnobservablesSet UnobservablesSet::Intersect(const UnobservablesSet& other,
                                              Zone* zone) const {
   if (IsEmpty() || other.IsEmpty()) return empty;
 
-  UnobservablesSet::SetT* new_unobservable = NewSet(zone);
-  UnobservablesSet::SetT* new_gc_observable = NewSet(zone);
-
-  for (auto [offset, inner_unobservable1, inner_unobservable2] :
-       unobservable_->Zip(*other.unobservable_)) {
-    for (auto [node, value1, value2] :
-         inner_unobservable1.Zip(inner_unobservable2)) {
-      if (value1 && value2) {
-        new_unobservable->Modify(offset, [node = node](InnerSetT* inner) {
-          inner->Set(node, true);
-        });
-      }
-    }
+  UnobservablesSet::SetT* intersection = NewSet(zone);
+  for (auto triple : set()->Zip(*other.set())) {
+    ObservableState new_state =
+        Intersect(std::get<1>(triple), std::get<2>(triple));
+    intersection->Set(std::get<0>(triple), new_state);
   }
 
-  for (auto [offset, inner_gc_observable1, inner_gc_observable2] :
-       gc_observable_->Zip(*other.gc_observable_)) {
-    for (auto [node, value, other_value] :
-         inner_gc_observable1.Zip(inner_gc_observable2)) {
-      if ((value || unobservable_->Get(offset).Get(node)) &&
-          (other_value || other.unobservable_->Get(offset).Get(node))) {
-        new_gc_observable->Modify(offset, [node = node](InnerSetT* inner) {
-          inner->Set(node, true);
-        });
-      }
-    }
-  }
-
-  return UnobservablesSet(new_unobservable, new_gc_observable);
+  return UnobservablesSet(intersection);
 }
 
-UnobservablesSet UnobservablesSet::Add(NodeId node, StoreOffset offset,
+UnobservablesSet UnobservablesSet::Add(UnobservableStore obs,
                                        Zone* zone) const {
-  if (unobservable_->Get(offset).Get(node)) return *this;
+  if (set()->Get(obs) == kUnobservable) return *this;
 
-  UnobservablesSet::SetT* new_unobservable = zone->New<SetT>(*unobservable_);
-  new_unobservable->Modify(
-      offset, [node](auto inner_set) { inner_set->Set(node, true); });
+  UnobservablesSet::SetT* new_set = NewSet(zone);
+  *new_set = *set();
+  SetAdd(new_set, obs);
 
-  return UnobservablesSet(new_unobservable, gc_observable_);
+  return UnobservablesSet(new_set);
 }
 
 UnobservablesSet UnobservablesSet::RemoveSameOffset(StoreOffset offset,
                                                     Zone* zone) const {
-  UnobservablesSet::SetT* new_unobservable = zone->New<SetT>(*unobservable_);
-  new_unobservable->Set(offset, InnerSetT(zone));
+  UnobservablesSet::SetT* new_set = NewSet(zone);
+  *new_set = *set();
 
-  UnobservablesSet::SetT* new_gc_observable = zone->New<SetT>(*gc_observable_);
-  new_gc_observable->Set(offset, InnerSetT(zone));
+  // Remove elements with the given offset.
+  for (auto entry : *new_set) {
+    const UnobservableStore& obs = entry.first;
+    if (obs.offset_ == offset) SetErase(new_set, obs);
+  }
 
-  return UnobservablesSet(new_unobservable, new_gc_observable);
+  return UnobservablesSet(new_set);
 }
 
 UnobservablesSet UnobservablesSet::MarkGCObservable(Zone* zone) const {
-  UnobservablesSet::SetT* new_gc_observable = zone->New<SetT>(*gc_observable_);
+  UnobservablesSet::SetT* new_set = NewSet(zone);
+  *new_set = *set();
 
-  for (auto [offset, inner_unobservable] : *unobservable_) {
-    new_gc_observable->Modify(offset, [inner_unobservable = inner_unobservable](
-                                          InnerSetT* inner_gc_observable) {
-      for (auto [node, value] : inner_unobservable) {
-        DCHECK_EQ(value, true);
-        inner_gc_observable->Set(node, true);
-      }
-    });
+  // Mark all elements as observable by GC.
+  for (auto entry : *new_set) {
+    const UnobservableStore& obs = entry.first;
+    SetGCObservable(new_set, obs);
   }
 
-  return UnobservablesSet(NewSet(zone), new_gc_observable);
+  return UnobservablesSet(new_set);
 }
 
 }  // namespace

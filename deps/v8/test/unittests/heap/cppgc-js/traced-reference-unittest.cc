@@ -205,7 +205,7 @@ TEST_F(TracedReferenceTest, TracedReferenceTrace) {
 }
 
 TEST_F(TracedReferenceTest, NoWriteBarrierOnConstruction) {
-  if (!v8_flags.incremental_marking)
+  if (!FLAG_incremental_marking)
     GTEST_SKIP() << "Write barrier tests require incremental marking";
 
   v8::Local<v8::Context> context = v8::Context::New(v8_isolate());
@@ -225,7 +225,7 @@ TEST_F(TracedReferenceTest, NoWriteBarrierOnConstruction) {
 }
 
 TEST_F(TracedReferenceTest, WriteBarrierForOnHeapReset) {
-  if (!v8_flags.incremental_marking)
+  if (!FLAG_incremental_marking)
     GTEST_SKIP() << "Write barrier tests require incremental marking";
 
   v8::Local<v8::Context> context = v8::Context::New(v8_isolate());
@@ -244,8 +244,10 @@ TEST_F(TracedReferenceTest, WriteBarrierForOnHeapReset) {
 }
 
 TEST_F(TracedReferenceTest, WriteBarrierForOnStackReset) {
-  if (!v8_flags.incremental_marking)
+  if (!FLAG_incremental_marking)
     GTEST_SKIP() << "Write barrier tests require incremental marking";
+
+  heap()->SetStackStart(base::Stack::GetStackStart());
 
   v8::Local<v8::Context> context = v8::Context::New(v8_isolate());
   v8::Context::Scope context_scope(context);
@@ -263,7 +265,7 @@ TEST_F(TracedReferenceTest, WriteBarrierForOnStackReset) {
 }
 
 TEST_F(TracedReferenceTest, WriteBarrierOnHeapCopy) {
-  if (!v8_flags.incremental_marking)
+  if (!FLAG_incremental_marking)
     GTEST_SKIP() << "Write barrier tests require incremental marking";
 
   v8::Local<v8::Context> context = v8::Context::New(v8_isolate());
@@ -285,8 +287,10 @@ TEST_F(TracedReferenceTest, WriteBarrierOnHeapCopy) {
 }
 
 TEST_F(TracedReferenceTest, WriteBarrierForOnStackCopy) {
-  if (!v8_flags.incremental_marking)
+  if (!FLAG_incremental_marking)
     GTEST_SKIP() << "Write barrier tests require incremental marking";
+
+  heap()->SetStackStart(base::Stack::GetStackStart());
 
   v8::Local<v8::Context> context = v8::Context::New(v8_isolate());
   v8::Context::Scope context_scope(context);
@@ -307,7 +311,7 @@ TEST_F(TracedReferenceTest, WriteBarrierForOnStackCopy) {
 }
 
 TEST_F(TracedReferenceTest, WriteBarrierForOnHeapMove) {
-  if (!v8_flags.incremental_marking)
+  if (!FLAG_incremental_marking)
     GTEST_SKIP() << "Write barrier tests require incremental marking";
 
   v8::Local<v8::Context> context = v8::Context::New(v8_isolate());
@@ -329,8 +333,10 @@ TEST_F(TracedReferenceTest, WriteBarrierForOnHeapMove) {
 }
 
 TEST_F(TracedReferenceTest, WriteBarrierForOnStackMove) {
-  if (!v8_flags.incremental_marking)
+  if (!FLAG_incremental_marking)
     GTEST_SKIP() << "Write barrier tests require incremental marking";
+
+  heap()->SetStackStart(base::Stack::GetStackStart());
 
   v8::Local<v8::Context> context = v8::Context::New(v8_isolate());
   v8::Context::Scope context_scope(context);

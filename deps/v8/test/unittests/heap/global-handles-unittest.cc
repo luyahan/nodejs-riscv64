@@ -309,7 +309,7 @@ TEST_F(GlobalHandlesTest, PhantomHandlesWithoutCallbacks) {
 }
 
 TEST_F(GlobalHandlesTest, WeakHandleToUnmodifiedJSObjectDiesOnScavenge) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
 
   WeakHandleTest(
       v8_isolate(), &ConstructJSObject<FlagAndGlobal>, [](FlagAndGlobal* fp) {},
@@ -317,7 +317,7 @@ TEST_F(GlobalHandlesTest, WeakHandleToUnmodifiedJSObjectDiesOnScavenge) {
 }
 
 TEST_F(GlobalHandlesTest, TracedReferenceToUnmodifiedJSObjectSurvivesScavenge) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
 
   ManualGCScope manual_gc(i_isolate());
   TracedReferenceTestWithScavenge(
@@ -344,7 +344,7 @@ TEST_F(GlobalHandlesTest,
 }
 
 TEST_F(GlobalHandlesTest, WeakHandleToUnmodifiedJSApiObjectDiesOnScavenge) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
 
   WeakHandleTest(
       v8_isolate(), &ConstructJSApiObject<FlagAndGlobal>,
@@ -354,7 +354,7 @@ TEST_F(GlobalHandlesTest, WeakHandleToUnmodifiedJSApiObjectDiesOnScavenge) {
 
 TEST_F(GlobalHandlesTest,
        TracedReferenceToUnmodifiedJSApiObjectDiesOnScavenge) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
 
   ManualGCScope manual_gc(i_isolate());
   TracedReferenceTestWithScavenge(
@@ -364,7 +364,7 @@ TEST_F(GlobalHandlesTest,
 
 TEST_F(GlobalHandlesTest,
        TracedReferenceToJSApiObjectWithIdentityHashSurvivesScavenge) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
 
   ManualGCScope manual_gc(i_isolate());
   Isolate* isolate = i_isolate();
@@ -386,7 +386,7 @@ TEST_F(GlobalHandlesTest,
 
 TEST_F(GlobalHandlesTest,
        WeakHandleToUnmodifiedJSApiObjectSurvivesScavengeWhenInHandle) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
 
   WeakHandleTest(
       v8_isolate(), &ConstructJSApiObject<FlagAndGlobal>,
@@ -419,7 +419,7 @@ TEST_F(GlobalHandlesTest,
 
 TEST_F(GlobalHandlesTest,
        TracedReferenceToJSApiObjectWithModifiedMapSurvivesScavenge) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
 
   v8::Isolate* isolate = v8_isolate();
 
@@ -441,7 +441,7 @@ TEST_F(GlobalHandlesTest,
 
 TEST_F(GlobalHandlesTest,
        TracedReferenceTOJsApiObjectWithElementsSurvivesScavenge) {
-  if (v8_flags.single_generation) return;
+  if (FLAG_single_generation) return;
 
   v8::Isolate* isolate = v8_isolate();
 
@@ -493,7 +493,7 @@ TEST_F(GlobalHandlesTest, GCFromWeakCallbacks) {
   v8::Local<v8::Context> context = v8::Context::New(isolate);
   v8::Context::Scope context_scope(context);
 
-  if (v8_flags.single_generation) {
+  if (FLAG_single_generation) {
     FlagAndGlobal fp;
     ConstructJSApiObject(isolate, context, &fp);
     CHECK(!InYoungGeneration(isolate, fp.handle));

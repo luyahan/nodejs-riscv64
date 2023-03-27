@@ -197,10 +197,10 @@ function assertInvalid(fn, message) {
                  TypeError, msg);
   }
 
-  // String with default initializer.
-  // TODO(12868): Is this the intended behavior?
-  let null_str = new WebAssembly.Global({ value: 'stringref' });
-  assertEquals(null, null_str.value);
+  assertThrows(()=>new WebAssembly.Global({ value: 'stringref' }),
+               TypeError,
+               "WebAssembly.Global(): " +
+               "Missing initial value when creating stringref global");
 
   let kSig_w_v = makeSig([], [kWasmStringRef]);
   let kSig_v_w = makeSig([kWasmStringRef], []);
@@ -302,8 +302,8 @@ function assertInvalid(fn, message) {
     let unsupportedGetMessage =
         `WebAssembly.Table.get(): ${type} has no JS representation`;
     let unsupportedSetMessage =
-        'WebAssembly.Table.set(): Argument 1 is invalid for table: '
-        + `${type} has no JS representation`;
+        'WebAssembly.Table.set(): Argument 1 is invalid for table of type '
+        + `${type}ref`;
     assertThrows(()=>table.get(0), TypeError, unsupportedGetMessage);
     assertThrows(()=>{table.set(0, null);}, TypeError, unsupportedSetMessage);
   }

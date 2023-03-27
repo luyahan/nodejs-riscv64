@@ -15,7 +15,6 @@
 #include "include/v8-primitive.h"
 #include "include/v8-script.h"
 #include "src/objects/objects-inl.h"
-#include "src/regexp/regexp.h"
 #include "test/fuzzer/fuzzer-support.h"
 
 // This is a hexdump of test/fuzzer/regexp_builtins/mjsunit.js generated using
@@ -243,31 +242,18 @@ std::string PickLimitForSplit(FuzzerArgs* args) {
 }
 
 std::string GenerateRandomFlags(FuzzerArgs* args) {
-  constexpr int kFlagCount = JSRegExp::kFlagCount;
-  static_assert((1 << kFlagCount) - 1 <= 0xFFFF);
-
   // TODO(mbid,v8:10765): Find a way to generate the kLinear flag sometimes,
   // but only for patterns that are supported by the experimental engine.
-  constexpr int kFuzzableFlagCount = kFlagCount - 1;
-  constexpr uint32_t kFuzzableFlagsMask =
-      ((1 << kFlagCount) - 1) & (~JSRegExp::kLinear);
+  constexpr size_t kFlagCount = JSRegExp::kFlagCount;
+  CHECK_EQ(JSRegExp::kHasIndices, 1 << (kFlagCount - 1));
+  CHECK_EQ(JSRegExp::kLinear, 1 << (kFlagCount - 2));
+  CHECK_EQ(JSRegExp::kDotAll, 1 << (kFlagCount - 3));
+  static_assert((1 << kFlagCount) - 1 <= 0xFF);
 
-  const uint8_t byte1 = RandomByte(args);
-  const uint8_t byte2 = RandomByte(args);
-  const uint16_t random_two_byte = (byte1 << 8) | byte2;
-
-  uint32_t flags = random_two_byte & kFuzzableFlagsMask;
+  const size_t flags = RandomByte(args) & ((1 << kFlagCount) - 1);
 
   int cursor = 0;
-  char buffer[kFuzzableFlagCount] = {'\0'};
-
-  // 'u' and 'v' are incompatible. If both are set randomly, clear
-  // one based on the random bit of the (unused) JSRegExp::kLinar flag.
-  if ((flags & JSRegExp::kUnicode) && (flags & JSRegExp::kUnicodeSets)) {
-    const bool rand_bit = random_two_byte & JSRegExp::kLinear;
-    flags &= rand_bit ? ~JSRegExp::kUnicode : ~JSRegExp::kUnicodeSets;
-  }
-  DCHECK(RegExp::VerifyFlags(RegExpFlags{static_cast<int>(flags)}));
+  char buffer[kFlagCount] = {'\0'};
 
   if (flags & JSRegExp::kGlobal) buffer[cursor++] = 'g';
   if (flags & JSRegExp::kIgnoreCase) buffer[cursor++] = 'i';
@@ -275,9 +261,7 @@ std::string GenerateRandomFlags(FuzzerArgs* args) {
   if (flags & JSRegExp::kSticky) buffer[cursor++] = 'y';
   if (flags & JSRegExp::kUnicode) buffer[cursor++] = 'u';
   if (flags & JSRegExp::kDotAll) buffer[cursor++] = 's';
-  CHECK_EQ(flags & JSRegExp::kLinear, 0);
   if (flags & JSRegExp::kHasIndices) buffer[cursor++] = 'd';
-  if (flags & JSRegExp::kUnicodeSets) buffer[cursor++] = 'v';
 
   return std::string(buffer, cursor);
 }

@@ -521,17 +521,17 @@ inline uint16_t ExtractPrefixedOpcodeBytes(WasmOpcode opcode) {
 #define WASM_REF_IS_NULL(val) val, kExprRefIsNull
 #define WASM_REF_AS_NON_NULL(val) val, kExprRefAsNonNull
 #define WASM_REF_EQ(lhs, rhs) lhs, rhs, kExprRefEq
-#define WASM_REF_TEST(ref, typeidx) \
-  ref, WASM_GC_OP(kExprRefTest), static_cast<byte>(typeidx)
-#define WASM_REF_CAST(ref, typeidx) \
-  ref, WASM_GC_OP(kExprRefCast), static_cast<byte>(typeidx)
+#define WASM_REF_TEST_STATIC(ref, typeidx) \
+  ref, WASM_GC_OP(kExprRefTestStatic), static_cast<byte>(typeidx)
+#define WASM_REF_CAST_STATIC(ref, typeidx) \
+  ref, WASM_GC_OP(kExprRefCastStatic), static_cast<byte>(typeidx)
 // Takes a reference value from the value stack to allow sequences of
 // conditional branches.
-#define WASM_BR_ON_CAST(depth, typeidx)                \
-  WASM_GC_OP(kExprBrOnCast), static_cast<byte>(depth), \
+#define WASM_BR_ON_CAST_STATIC(depth, typeidx)               \
+  WASM_GC_OP(kExprBrOnCastStatic), static_cast<byte>(depth), \
       static_cast<byte>(typeidx)
-#define WASM_BR_ON_CAST_FAIL(depth, typeidx)               \
-  WASM_GC_OP(kExprBrOnCastFail), static_cast<byte>(depth), \
+#define WASM_BR_ON_CAST_STATIC_FAIL(depth, typeidx)              \
+  WASM_GC_OP(kExprBrOnCastStaticFail), static_cast<byte>(depth), \
       static_cast<byte>(typeidx)
 
 #define WASM_GC_INTERNALIZE(extern) extern, WASM_GC_OP(kExprExternInternalize)
@@ -567,7 +567,8 @@ inline uint16_t ExtractPrefixedOpcodeBytes(WasmOpcode opcode) {
   array, index, WASM_GC_OP(kExprArrayGetS), static_cast<byte>(typeidx)
 #define WASM_ARRAY_SET(typeidx, array, index, value) \
   array, index, value, WASM_GC_OP(kExprArraySet), static_cast<byte>(typeidx)
-#define WASM_ARRAY_LEN(array) array, WASM_GC_OP(kExprArrayLen)
+#define WASM_ARRAY_LEN(array) \
+  array, WASM_GC_OP(kExprArrayLen), /* dummy index */ 0
 #define WASM_ARRAY_COPY(dst_idx, src_idx, dst_array, dst_index, src_array, \
                         src_index, length)                                 \
   dst_array, dst_index, src_array, src_index, length,                      \
@@ -596,11 +597,10 @@ inline uint16_t ExtractPrefixedOpcodeBytes(WasmOpcode opcode) {
 #define WASM_RETURN_CALL_INDIRECT(sig_index, ...) \
   __VA_ARGS__, kExprReturnCallIndirect, static_cast<byte>(sig_index), TABLE_ZERO
 
-#define WASM_CALL_REF(func_ref, sig_index, ...) \
-  __VA_ARGS__, func_ref, kExprCallRef, sig_index
+#define WASM_CALL_REF(func_ref, ...) __VA_ARGS__, func_ref, kExprCallRef
 
-#define WASM_RETURN_CALL_REF(func_ref, sig_index, ...) \
-  __VA_ARGS__, func_ref, kExprReturnCallRef, sig_index
+#define WASM_RETURN_CALL_REF(func_ref, ...) \
+  __VA_ARGS__, func_ref, kExprReturnCallRef
 
 #define WASM_NOT(x) x, kExprI32Eqz
 #define WASM_SEQ(...) __VA_ARGS__

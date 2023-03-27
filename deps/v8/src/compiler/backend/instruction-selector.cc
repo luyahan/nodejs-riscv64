@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "src/base/iterator.h"
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/assembler-inl.h"
 #include "src/codegen/interface-descriptors-inl.h"
 #include "src/codegen/tick-counter.h"
@@ -2698,7 +2699,8 @@ void InstructionSelector::VisitWord32PairShr(Node* node) { UNIMPLEMENTED(); }
 void InstructionSelector::VisitWord32PairSar(Node* node) { UNIMPLEMENTED(); }
 #endif  // V8_TARGET_ARCH_64_BIT
 
-#if !V8_TARGET_ARCH_IA32 && !V8_TARGET_ARCH_ARM && !V8_TARGET_ARCH_RISCV32
+#if !V8_TARGET_ARCH_IA32 && !V8_TARGET_ARCH_ARM && !V8_TARGET_ARCH_MIPS && \
+    !V8_TARGET_ARCH_RISCV32
 void InstructionSelector::VisitWord32AtomicPairLoad(Node* node) {
   UNIMPLEMENTED();
 }
@@ -2734,7 +2736,7 @@ void InstructionSelector::VisitWord32AtomicPairExchange(Node* node) {
 void InstructionSelector::VisitWord32AtomicPairCompareExchange(Node* node) {
   UNIMPLEMENTED();
 }
-#endif  // !V8_TARGET_ARCH_IA32 && !V8_TARGET_ARCH_ARM
+#endif  // !V8_TARGET_ARCH_IA32 && !V8_TARGET_ARCH_ARM && !V8_TARGET_ARCH_MIPS
         // && !V8_TARGET_ARCH_RISCV32
 
 #if !V8_TARGET_ARCH_X64 && !V8_TARGET_ARCH_ARM64 && !V8_TARGET_ARCH_MIPS64 && \
@@ -2800,13 +2802,53 @@ void InstructionSelector::VisitF32x4Qfms(Node* node) { UNIMPLEMENTED(); }
         // && !V8_TARGET_ARCH_ARM64 && !V8_TARGET_ARCH_IA32 &&
         // !V8_TARGET_ARCH_RISCV64 && !V8_TARGET_ARCH_RISCV32
 
-#if !V8_TARGET_ARCH_ARM64 && !V8_TARGET_ARCH_X64 && !V8_TARGET_ARCH_IA32
+#if !V8_TARGET_ARCH_X64 && !V8_TARGET_ARCH_IA32 && !V8_TARGET_ARCH_ARM64 && \
+    !V8_TARGET_ARCH_RISCV32 && !V8_TARGET_ARCH_RISCV64 && !V8_TARGET_ARCH_ARM
+void InstructionSelector::VisitI8x16RelaxedLaneSelect(Node* node) {
+  UNIMPLEMENTED();
+}
+void InstructionSelector::VisitI16x8RelaxedLaneSelect(Node* node) {
+  UNIMPLEMENTED();
+}
+void InstructionSelector::VisitI32x4RelaxedLaneSelect(Node* node) {
+  UNIMPLEMENTED();
+}
+void InstructionSelector::VisitI64x2RelaxedLaneSelect(Node* node) {
+  UNIMPLEMENTED();
+}
+void InstructionSelector::VisitF32x4RelaxedMin(Node* node) { UNIMPLEMENTED(); }
+void InstructionSelector::VisitF32x4RelaxedMax(Node* node) { UNIMPLEMENTED(); }
+void InstructionSelector::VisitF64x2RelaxedMin(Node* node) { UNIMPLEMENTED(); }
+void InstructionSelector::VisitF64x2RelaxedMax(Node* node) { UNIMPLEMENTED(); }
+void InstructionSelector::VisitI32x4RelaxedTruncF64x2SZero(Node* node) {
+  UNIMPLEMENTED();
+}
+void InstructionSelector::VisitI32x4RelaxedTruncF64x2UZero(Node* node) {
+  UNIMPLEMENTED();
+}
+void InstructionSelector::VisitI32x4RelaxedTruncF32x4S(Node* node) {
+  UNIMPLEMENTED();
+}
+void InstructionSelector::VisitI32x4RelaxedTruncF32x4U(Node* node) {
+  UNIMPLEMENTED();
+}
+#endif  // !V8_TARGET_ARCH_X64 && !V8_TARGET_ARCH_IA32 && !V8_TARGET_ARCH_ARM64
+        // && !V8_TARGET_ARCH_RISCV64 && !V8_TARGET_ARM &&
+        // !V8_TARGET_ARCH_RISCV32
+
+#if !V8_TARGET_ARCH_ARM64 && !V8_TARGET_ARCH_ARM && !V8_TARGET_ARCH_X64 && \
+    !V8_TARGET_ARCH_IA32 && !V8_TARGET_ARCH_RISCV64 && !V8_TARGET_ARCH_RISCV32
+void InstructionSelector::VisitI16x8RelaxedQ15MulRS(Node* node) {
+  UNIMPLEMENTED();
+}
+#endif  // !V8_TARGET_ARCH_ARM64 && !V8_TARGET_ARCH_ARM !V8_TARGET_ARCH_X64 &&
+        // !V8_TARGET_ARCH_IA32
+
+#if !V8_TARGET_ARCH_ARM64
 void InstructionSelector::VisitI16x8DotI8x16I7x16S(Node* node) {
   UNIMPLEMENTED();
 }
-#endif  // !V8_TARGET_ARCH_ARM6 && !V8_TARGET_ARCH_X64 && !V8_TARGET_ARCH_IA32
 
-#if !V8_TARGET_ARCH_ARM64
 void InstructionSelector::VisitI32x4DotI8x16I7x16AddS(Node* node) {
   UNIMPLEMENTED();
 }

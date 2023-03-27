@@ -406,10 +406,6 @@ class BytecodeGenerator final : public AstVisitor<BytecodeGenerator> {
   template <typename ExpressionFunc>
   void BuildOptionalChain(ExpressionFunc expression_func);
 
-  void BuildSuperCallOptimization(Register this_function, Register new_target,
-                                  Register constructor_then_instance,
-                                  BytecodeLabel* super_ctor_call_done);
-
   // Visitors for obtaining expression result in the accumulator, in a
   // register, or just getting the effect. Some visitors return a TypeHint which
   // specifies the type of the result of the visited expression.

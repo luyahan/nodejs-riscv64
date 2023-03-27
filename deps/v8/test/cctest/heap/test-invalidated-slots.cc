@@ -48,8 +48,7 @@ Page* HeapTester::AllocateByteArraysOnPage(
 }
 
 HEAP_TEST(InvalidatedSlotsNoInvalidatedRanges) {
-  v8_flags.stress_concurrent_allocation =
-      false;  // For AllocateByteArraysOnPage.
+  FLAG_stress_concurrent_allocation = false;  // For AllocateByteArraysOnPage.
   CcTest::InitializeVM();
   Heap* heap = CcTest::heap();
   std::vector<ByteArray> byte_arrays;
@@ -66,8 +65,7 @@ HEAP_TEST(InvalidatedSlotsNoInvalidatedRanges) {
 }
 
 HEAP_TEST(InvalidatedSlotsSomeInvalidatedRanges) {
-  v8_flags.stress_concurrent_allocation =
-      false;  // For AllocateByteArraysOnPage.
+  FLAG_stress_concurrent_allocation = false;  // For AllocateByteArraysOnPage.
   CcTest::InitializeVM();
   Heap* heap = CcTest::heap();
   std::vector<ByteArray> byte_arrays;
@@ -95,8 +93,7 @@ HEAP_TEST(InvalidatedSlotsSomeInvalidatedRanges) {
 }
 
 HEAP_TEST(InvalidatedSlotsAllInvalidatedRanges) {
-  v8_flags.stress_concurrent_allocation =
-      false;  // For AllocateByteArraysOnPage.
+  FLAG_stress_concurrent_allocation = false;  // For AllocateByteArraysOnPage.
   CcTest::InitializeVM();
   Heap* heap = CcTest::heap();
   std::vector<ByteArray> byte_arrays;
@@ -175,8 +172,7 @@ HEAP_TEST(InvalidatedSlotsEvacuationCandidate) {
 }
 
 HEAP_TEST(InvalidatedSlotsResetObjectRegression) {
-  v8_flags.stress_concurrent_allocation =
-      false;  // For AllocateByteArraysOnPage.
+  FLAG_stress_concurrent_allocation = false;  // For AllocateByteArraysOnPage.
   CcTest::InitializeVM();
   Heap* heap = CcTest::heap();
   std::vector<ByteArray> byte_arrays;
@@ -219,9 +215,9 @@ Handle<FixedArray> AllocateArrayOnEvacuationCandidate(Isolate* isolate,
 }
 
 HEAP_TEST(InvalidatedSlotsRightTrimFixedArray) {
-  if (!v8_flags.incremental_marking) return;
-  v8_flags.manual_evacuation_candidates_selection = true;
-  v8_flags.parallel_compaction = false;
+  if (!FLAG_incremental_marking) return;
+  FLAG_manual_evacuation_candidates_selection = true;
+  FLAG_parallel_compaction = false;
   ManualGCScope manual_gc_scope;
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();
@@ -251,9 +247,9 @@ HEAP_TEST(InvalidatedSlotsRightTrimFixedArray) {
 }
 
 HEAP_TEST(InvalidatedSlotsRightTrimLargeFixedArray) {
-  if (!v8_flags.incremental_marking) return;
-  v8_flags.manual_evacuation_candidates_selection = true;
-  v8_flags.parallel_compaction = false;
+  if (!FLAG_incremental_marking) return;
+  FLAG_manual_evacuation_candidates_selection = true;
+  FLAG_parallel_compaction = false;
   ManualGCScope manual_gc_scope;
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();
@@ -289,9 +285,9 @@ HEAP_TEST(InvalidatedSlotsRightTrimLargeFixedArray) {
 }
 
 HEAP_TEST(InvalidatedSlotsLeftTrimFixedArray) {
-  if (!v8_flags.incremental_marking) return;
-  v8_flags.manual_evacuation_candidates_selection = true;
-  v8_flags.parallel_compaction = false;
+  if (!FLAG_incremental_marking) return;
+  FLAG_manual_evacuation_candidates_selection = true;
+  FLAG_parallel_compaction = false;
   ManualGCScope manual_gc_scope;
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();
@@ -321,9 +317,9 @@ HEAP_TEST(InvalidatedSlotsLeftTrimFixedArray) {
 }
 
 HEAP_TEST(InvalidatedSlotsFastToSlow) {
-  if (!v8_flags.incremental_marking) return;
-  v8_flags.manual_evacuation_candidates_selection = true;
-  v8_flags.parallel_compaction = false;
+  if (!FLAG_incremental_marking) return;
+  FLAG_manual_evacuation_candidates_selection = true;
+  FLAG_parallel_compaction = false;
   ManualGCScope manual_gc_scope;
   CcTest::InitializeVM();
   Isolate* isolate = CcTest::i_isolate();

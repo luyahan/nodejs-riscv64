@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Flags: --experimental-wasm-gc --experimental-wasm-stringref
+// Flags: --experimental-wasm-gc
 
 d8.file.execute('test/mjsunit/wasm/wasm-module-builder.js');
 
@@ -43,13 +43,12 @@ for (let [typeName, type] of Object.entries(tableTypes)) {
   let builder = new WasmModuleBuilder();
 
   const size = 10;
-  const maxSize = 20;
+  const maxSize = 15;
   let table = new WebAssembly.Table({
     initial: size, maximum: maxSize, element: typeName
   });
 
   let creatorSig = builder.addType(makeSig([], [type]));
-  let creatorAnySig = builder.addType(makeSig([], [kWasmAnyRef]));
   let struct = builder.addStruct([makeField(kWasmI32, false)]);
   let array = builder.addArray(kWasmI32, true);
 
@@ -59,7 +58,7 @@ for (let [typeName, type] of Object.entries(tableTypes)) {
     .addBody([
       kExprLocalGet, 0,
       kExprLocalGet, 1,
-      kExprCallRef, creatorSig,
+      kExprCallRef,
       kExprTableSet, 0,
     ])
     .exportFunc();
@@ -75,7 +74,7 @@ for (let [typeName, type] of Object.entries(tableTypes)) {
     .addBody([
       kExprLocalGet, 0, kExprTableGet, 0,
       kGCPrefix, kExprRefAsData,
-      kGCPrefix, kExprRefCast, struct,
+      kGCPrefix, kExprRefCastStatic, struct,
       kGCPrefix, kExprStructGet, struct, 0,
     ])
     .exportFunc();
@@ -83,7 +82,7 @@ for (let [typeName, type] of Object.entries(tableTypes)) {
     .addBody([
       kExprLocalGet, 0, kExprTableGet, 0,
       kGCPrefix, kExprRefAsData,
-      kGCPrefix, kExprRefCast, array,
+      kGCPrefix, kExprRefCastStatic, array,
       kExprI32Const, 0,
       kGCPrefix, kExprArrayGet, array,
     ])
@@ -93,15 +92,7 @@ for (let [typeName, type] of Object.entries(tableTypes)) {
                       makeSig([wasmRefType(creatorSig)], [kWasmExternRef]))
     .addBody([
       kExprLocalGet, 0,
-      kExprCallRef, creatorSig,
-      kGCPrefix, kExprExternExternalize,
-    ])
-    .exportFunc();
-  builder.addFunction("exportedAny",
-                      makeSig([wasmRefType(creatorAnySig)], [kWasmExternRef]))
-    .addBody([
-      kExprLocalGet, 0,
-      kExprCallRef, creatorAnySig,
+      kExprCallRef,
       kGCPrefix, kExprExternExternalize,
     ])
     .exportFunc();
@@ -132,33 +123,22 @@ for (let [typeName, type] of Object.entries(tableTypes)) {
   builder.addFunction("createNull", creatorSig)
     .addBody([kExprRefNull, kNullRefCode])
     .exportFunc();
-  let i31Sig = typeName != "dataref" && typeName != "arrayref"
-               ? creatorSig : creatorAnySig;
-  builder.addFunction("createI31", i31Sig)
-    .addBody([kExprI32Const, 12, kGCPrefix, kExprI31New])
-    .exportFunc();
-  let structSig = typeName != "arrayref" ? creatorSig : creatorAnySig;
-  builder.addFunction("createStruct", structSig)
-    .addBody([kExprI32Const, 12, kGCPrefix, kExprStructNew, struct])
-    .exportFunc();
+  if (typeName != "dataref" && typeName != "arrayref") {
+    builder.addFunction("createI31", creatorSig)
+      .addBody([kExprI32Const, 12, kGCPrefix, kExprI31New])
+      .exportFunc();
+  }
+  if (typeName != "arrayref") {
+    builder.addFunction("createStruct", creatorSig)
+      .addBody([kExprI32Const, 12, kGCPrefix, kExprStructNew, struct])
+      .exportFunc();
+  }
   builder.addFunction("createArray", creatorSig)
     .addBody([
       kExprI32Const, 12,
       kGCPrefix, kExprArrayNewFixed, array, 1
     ])
     .exportFunc();
-
-  if (typeName == "anyref") {
-    builder.addFunction("tableSetFromExtern",
-                      makeSig([kWasmI32, kWasmExternRef], []))
-    .addBody([
-      kExprLocalGet, 0,
-      kExprLocalGet, 1,
-      kGCPrefix, kExprExternInternalize,
-      kExprTableSet, 0,
-    ])
-    .exportFunc();
-  }
 
   let instance = builder.instantiate({ imports: { table } });
   let wasm = instance.exports;
@@ -197,20 +177,8 @@ for (let [typeName, type] of Object.entries(tableTypes)) {
   assertEquals(12, wasm.tableGetArrayVal(7));
   assertEquals(0, wasm.eq(table.get(6), table.get(7))); // Not the same.
 
-  // Set stringref.
-  if (typeName == "anyref") {
-    table.set(8, "TestString");
-    assertEquals("TestString", wasm.tableGet(8));
-    assertEquals("TestString", table.get(8));
-    let largeString = "Another test string, this time larger to prevent"
-                    + " any kind of short string optimization.";
-    wasm.tableSetFromExtern(9, largeString);
-    assertEquals(largeString, wasm.tableGet(9));
-    assertEquals(largeString, table.get(9));
-  }
-
   // Ensure all objects are externalized, so they can be handled by JS.
-  for (let i = 0; i < table.length; ++i) {
+  for (let i = 0; i < size; ++i) {
     JSON.stringify(table.get(i));
   }
 
@@ -220,27 +188,5 @@ for (let [typeName, type] of Object.entries(tableTypes)) {
     assertEquals(12, wasm.tableGetStructVal(size));
     assertEquals(12, wasm.tableGetStructVal(size + 1));
     assertTraps(kTrapTableOutOfBounds, () => wasm.tableGetStructVal(size + 2));
-    // Grow by 1 without initial value.
-    table.grow(1, null);
-    table.grow(1, undefined);
-  }
-  if (typeName == "anyref") {
-    table.grow(1, "Grow using a string");
-    assertEquals("Grow using a string", wasm.tableGet(14));
-    assertEquals("Grow using a string", table.get(14));
-  }
-
-  // Set from JS with wrapped wasm value of incompatible type.
-  let invalidValues = {
-    "anyref": [],
-    "eqref": [],
-    "dataref": ["I31"],
-    "arrayref": ["I31", "Struct"],
-  };
-  for (let invalidType of invalidValues[typeName]) {
-    print(`Test invalid type ${invalidType} for ${typeName}`);
-    let invalid_value = wasm.exportedAny(wasm[`create${invalidType}`]);
-    assertThrows(() => table.grow(1, invalid_value), TypeError);
-    assertThrows(() => table.set(1, invalid_value), TypeError);
   }
 }

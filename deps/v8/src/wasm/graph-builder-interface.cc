@@ -196,9 +196,6 @@ class WasmGraphBuildingInterface {
   void StartFunctionBody(FullDecoder* decoder, Control* block) {}
 
   void FinishFunction(FullDecoder*) {
-    if (v8_flags.wasm_speculative_inlining) {
-      DCHECK_EQ(feedback_instruction_index_, type_feedback_.size());
-    }
     if (inlined_status_ == kRegularFunction) {
       builder_->PatchInStackCheckIfNeeded();
     }
@@ -1371,18 +1368,18 @@ class WasmGraphBuildingInterface {
   }
 
   void StringNewWtf8(FullDecoder* decoder,
-                     const MemoryIndexImmediate<validate>& memory,
-                     const unibrow::Utf8Variant variant, const Value& offset,
-                     const Value& size, Value* result) {
-    SetAndTypeNode(result, builder_->StringNewWtf8(memory.index, variant,
-                                                   offset.node, size.node));
+                     const EncodeWtf8Immediate<validate>& imm,
+                     const Value& offset, const Value& size, Value* result) {
+    SetAndTypeNode(result,
+                   builder_->StringNewWtf8(imm.memory.index, imm.policy.value,
+                                           offset.node, size.node));
   }
 
   void StringNewWtf8Array(FullDecoder* decoder,
-                          const unibrow::Utf8Variant variant,
+                          const Wtf8PolicyImmediate<validate>& imm,
                           const Value& array, const Value& start,
                           const Value& end, Value* result) {
-    SetAndTypeNode(result, builder_->StringNewWtf8Array(variant, array.node,
+    SetAndTypeNode(result, builder_->StringNewWtf8Array(imm.value, array.node,
                                                         start.node, end.node));
   }
 
@@ -1406,15 +1403,15 @@ class WasmGraphBuildingInterface {
   }
 
   void StringMeasureWtf8(FullDecoder* decoder,
-                         const unibrow::Utf8Variant variant, const Value& str,
-                         Value* result) {
-    switch (variant) {
-      case unibrow::Utf8Variant::kUtf8:
+                         const Wtf8PolicyImmediate<validate>& imm,
+                         const Value& str, Value* result) {
+    switch (imm.value) {
+      case kWtf8PolicyReject:
         result->node = builder_->StringMeasureUtf8(
             str.node, NullCheckFor(str.type), decoder->position());
         break;
-      case unibrow::Utf8Variant::kLossyUtf8:
-      case unibrow::Utf8Variant::kWtf8:
+      case kWtf8PolicyAccept:
+      case kWtf8PolicyReplace:
         result->node = builder_->StringMeasureWtf8(
             str.node, NullCheckFor(str.type), decoder->position());
         break;
@@ -1428,20 +1425,19 @@ class WasmGraphBuildingInterface {
   }
 
   void StringEncodeWtf8(FullDecoder* decoder,
-                        const MemoryIndexImmediate<validate>& memory,
-                        const unibrow::Utf8Variant variant, const Value& str,
-                        const Value& offset, Value* result) {
-    result->node = builder_->StringEncodeWtf8(memory.index, variant, str.node,
-                                              NullCheckFor(str.type),
-                                              offset.node, decoder->position());
+                        const EncodeWtf8Immediate<validate>& imm,
+                        const Value& str, const Value& offset, Value* result) {
+    result->node = builder_->StringEncodeWtf8(
+        imm.memory.index, imm.policy.value, str.node, NullCheckFor(str.type),
+        offset.node, decoder->position());
   }
 
   void StringEncodeWtf8Array(FullDecoder* decoder,
-                             const unibrow::Utf8Variant variant,
+                             const Wtf8PolicyImmediate<validate>& imm,
                              const Value& str, const Value& array,
                              const Value& start, Value* result) {
     result->node = builder_->StringEncodeWtf8Array(
-        variant, str.node, NullCheckFor(str.type), array.node,
+        imm.value, str.node, NullCheckFor(str.type), array.node,
         NullCheckFor(array.type), start.node, decoder->position());
   }
 
@@ -1496,15 +1492,14 @@ class WasmGraphBuildingInterface {
   }
 
   void StringViewWtf8Encode(FullDecoder* decoder,
-                            const MemoryIndexImmediate<validate>& memory,
-                            const unibrow::Utf8Variant variant,
+                            const EncodeWtf8Immediate<validate>& imm,
                             const Value& view, const Value& addr,
                             const Value& pos, const Value& bytes,
                             Value* next_pos, Value* bytes_written) {
-    builder_->StringViewWtf8Encode(memory.index, variant, view.node,
-                                   NullCheckFor(view.type), addr.node, pos.node,
-                                   bytes.node, &next_pos->node,
-                                   &bytes_written->node, decoder->position());
+    builder_->StringViewWtf8Encode(
+        imm.memory.index, imm.policy.value, view.node, NullCheckFor(view.type),
+        addr.node, pos.node, bytes.node, &next_pos->node, &bytes_written->node,
+        decoder->position());
   }
 
   void StringViewWtf8Slice(FullDecoder* decoder, const Value& view,

@@ -41,18 +41,23 @@ from testrunner.outproc import test262
 
 # TODO(littledan): move the flag mapping into the status file
 FEATURE_FLAGS = {
-    'Intl.NumberFormat-v3': '--harmony_intl_number_format_v3',
-    'Symbol.prototype.description': '--harmony-symbol-description',
-    'FinalizationRegistry': '--harmony-weak-refs-with-cleanup-some',
-    'WeakRef': '--harmony-weak-refs-with-cleanup-some',
-    'host-gc-required': '--expose-gc-as=v8GC',
-    'IsHTMLDDA': '--allow-natives-syntax',
-    'import-assertions': '--harmony-import-assertions',
-    'resizable-arraybuffer': '--harmony-rab-gsab',
-    'Temporal': '--harmony-temporal',
-    'array-find-from-last': '--harmony_array_find_last',
-    'ShadowRealm': '--harmony-shadow-realm',
-    'regexp-v-flag': '--harmony-regexp-unicode-sets',
+  'Intl.NumberFormat-v3': '--harmony_intl_number_format_v3',
+  'Symbol.prototype.description': '--harmony-symbol-description',
+  'FinalizationRegistry': '--harmony-weak-refs-with-cleanup-some',
+  'WeakRef': '--harmony-weak-refs-with-cleanup-some',
+  'host-gc-required': '--expose-gc-as=v8GC',
+  'IsHTMLDDA': '--allow-natives-syntax',
+  'top-level-await': '--harmony-top-level-await',
+  'regexp-match-indices': '--harmony-regexp-match-indices',
+  'regexp-named-groups': '--harmony-regexp-match-indices',
+  'error-cause': '--harmony-error-cause',
+  'import-assertions': '--harmony-import-assertions',
+  'Object.hasOwn': '--harmony-object-has-own',
+  'class-static-block': '--harmony-class-static-blocks',
+  'resizable-arraybuffer': '--harmony-rab-gsab',
+  'Temporal': '--harmony-temporal',
+  'array-find-from-last': '--harmony_array_find_last',
+  'ShadowRealm': '--harmony-shadow-realm',
 }
 
 SKIPPED_FEATURES = set([])

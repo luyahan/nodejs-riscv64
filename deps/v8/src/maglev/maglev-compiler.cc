@@ -13,6 +13,7 @@
 #include "src/base/threaded-list.h"
 #include "src/codegen/interface-descriptors-inl.h"
 #include "src/codegen/machine-type.h"
+#include "src/codegen/macro-assembler.h"
 #include "src/codegen/register.h"
 #include "src/codegen/reglist.h"
 #include "src/common/globals.h"
@@ -26,7 +27,6 @@
 #include "src/ic/handler-configuration.h"
 #include "src/maglev/maglev-basic-block.h"
 #include "src/maglev/maglev-code-generator.h"
-#include "src/maglev/maglev-compilation-info.h"
 #include "src/maglev/maglev-compilation-unit.h"
 #include "src/maglev/maglev-graph-builder.h"
 #include "src/maglev/maglev-graph-labeller.h"
@@ -49,12 +49,13 @@ namespace maglev {
 
 class UseMarkingProcessor {
  public:
-  explicit UseMarkingProcessor(MaglevCompilationInfo* compilation_info)
-      : compilation_info_(compilation_info) {}
-
-  void PreProcessGraph(Graph* graph) { next_node_id_ = kFirstValidNodeId; }
-  void PostProcessGraph(Graph* graph) { DCHECK(loop_used_nodes_.empty()); }
-  void PreProcessBasicBlock(BasicBlock* block) {
+  void PreProcessGraph(MaglevCompilationInfo*, Graph* graph) {
+    next_node_id_ = kFirstValidNodeId;
+  }
+  void PostProcessGraph(MaglevCompilationInfo*, Graph* graph) {
+    DCHECK(loop_used_nodes_.empty());
+  }
+  void PreProcessBasicBlock(MaglevCompilationInfo*, BasicBlock* block) {
     if (!block->has_state()) return;
     if (block->state()->is_loop()) {
       loop_used_nodes_.push_back(LoopUsedNodes{next_node_id_, {}});
@@ -121,7 +122,7 @@ class UseMarkingProcessor {
       // loop, allow nodes to be "moved" between lifetime extensions.
       LoopUsedNodes* outer_loop_used_nodes = GetCurrentLoopUsedNodes();
       base::Vector<Input> used_node_inputs =
-          compilation_info_->zone()->NewVector<Input>(
+          state.compilation_info()->zone()->NewVector<Input>(
               loop_used_nodes.used_nodes.size());
       int i = 0;
       for (ValueNode* used_node : loop_used_nodes.used_nodes) {
@@ -222,37 +223,35 @@ class UseMarkingProcessor {
     register_frame->ForEachValue(
         deopt_info->unit, [&](ValueNode* node, interpreter::Register reg) {
           // Skip over the result location.
-          if (deopt_info->IsResultRegister(reg)) return;
+          if (reg == deopt_info->result_location) return;
           MarkUse(node, use_id, &deopt_info->input_locations[index++],
                   loop_used_nodes);
         });
   }
 
-  MaglevCompilationInfo* compilation_info_;
   uint32_t next_node_id_;
   std::vector<LoopUsedNodes> loop_used_nodes_;
 };
 
 class TranslationArrayProcessor {
  public:
-  explicit TranslationArrayProcessor(LocalIsolate* local_isolate,
-                                     MaglevCompilationInfo* compilation_info)
-      : local_isolate_(local_isolate), compilation_info_(compilation_info) {}
+  explicit TranslationArrayProcessor(LocalIsolate* local_isolate)
+      : local_isolate_(local_isolate) {}
 
-  void PreProcessGraph(Graph* graph) {
+  void PreProcessGraph(MaglevCompilationInfo* compilation_info, Graph* graph) {
     translation_array_builder_.reset(
-        new TranslationArrayBuilder(compilation_info_->zone()));
+        new TranslationArrayBuilder(compilation_info->zone()));
     deopt_literals_.reset(new IdentityMap<int, base::DefaultAllocationPolicy>(
         local_isolate_->heap()->heap()));
 
     tagged_slots_ = graph->tagged_stack_slots();
   }
 
-  void PostProcessGraph(Graph* graph) {
-    compilation_info_->set_translation_array_builder(
+  void PostProcessGraph(MaglevCompilationInfo* compilation_info, Graph* graph) {
+    compilation_info->set_translation_array_builder(
         std::move(translation_array_builder_), std::move(deopt_literals_));
   }
-  void PreProcessBasicBlock(BasicBlock* block) {}
+  void PreProcessBasicBlock(MaglevCompilationInfo*, BasicBlock* block) {}
 
   void Process(NodeBase* node, const ProcessingState& state) {
     if (node->properties().can_eager_deopt()) {
@@ -526,7 +525,6 @@ class TranslationArrayProcessor {
   }
 
   LocalIsolate* local_isolate_;
-  MaglevCompilationInfo* compilation_info_;
   std::unique_ptr<TranslationArrayBuilder> translation_array_builder_;
   std::unique_ptr<IdentityMap<int, base::DefaultAllocationPolicy>>
       deopt_literals_;
@@ -550,8 +548,16 @@ void MaglevCompiler::Compile(LocalIsolate* local_isolate,
         compilation_info->toplevel_compilation_unit();
     std::cout << "Compiling " << Brief(*top_level_unit->function().object())
               << " with Maglev\n";
-    BytecodeArray::Disassemble(top_level_unit->bytecode().object(), std::cout);
+    top_level_unit->bytecode().object()->Disassemble(std::cout);
     top_level_unit->feedback().object()->Print(std::cout);
+  }
+
+  // TODO(v8:7700): Support exceptions in maglev. We currently bail if exception
+  // handler table is non-empty.
+  if (compilation_info->toplevel_compilation_unit()
+          ->bytecode()
+          .handler_table_size() > 0) {
+    return;
   }
 
   Graph* graph = Graph::New(compilation_info->zone());
@@ -575,7 +581,7 @@ void MaglevCompiler::Compile(LocalIsolate* local_isolate,
 
   {
     GraphMultiProcessor<UseMarkingProcessor, MaglevVregAllocator> processor(
-        UseMarkingProcessor{compilation_info});
+        compilation_info);
     processor.ProcessGraph(graph_builder.graph());
   }
 
@@ -593,7 +599,7 @@ void MaglevCompiler::Compile(LocalIsolate* local_isolate,
   }
 
   GraphProcessor<TranslationArrayProcessor> build_translation_array(
-      local_isolate, compilation_info);
+      compilation_info, local_isolate);
   build_translation_array.ProcessGraph(graph_builder.graph());
 
   // Stash the compiled graph on the compilation info.

@@ -212,7 +212,7 @@ std::ostream& operator<<(std::ostream& os, PropertyCellType type) {
 Handle<FieldType> Object::OptimalType(Isolate* isolate,
                                       Representation representation) {
   if (representation.IsNone()) return FieldType::None(isolate);
-  if (v8_flags.track_field_types) {
+  if (FLAG_track_field_types) {
     if (representation.IsHeapObject() && IsHeapObject()) {
       // We can track only JavaScript objects with stable maps.
       Handle<Map> map(HeapObject::cast(*this).map(), isolate);
@@ -1644,7 +1644,7 @@ bool Object::SameValueZero(Object other) {
 MaybeHandle<Object> Object::ArraySpeciesConstructor(
     Isolate* isolate, Handle<Object> original_array) {
   Handle<Object> default_species = isolate->array_function();
-  if (!v8_flags.builtin_subclassing) return default_species;
+  if (!FLAG_builtin_subclassing) return default_species;
   if (original_array->IsJSArray() &&
       Handle<JSArray>::cast(original_array)->HasArrayPrototype(isolate) &&
       Protectors::IsArraySpeciesLookupChainIntact(isolate)) {
@@ -2845,7 +2845,7 @@ Maybe<bool> Object::SetDataProperty(LookupIterator* it, Handle<Object> value) {
     }
 
 #if VERIFY_HEAP
-  if (v8_flags.verify_heap) {
+  if (FLAG_verify_heap) {
     receiver->HeapObjectVerify(isolate);
   }
 #endif
@@ -2931,9 +2931,9 @@ Maybe<bool> Object::TransitionAndWriteDataProperty(
   it->WriteDataValue(value, true);
 
 #if VERIFY_HEAP
-  if (v8_flags.verify_heap) {
-    receiver->HeapObjectVerify(it->isolate());
-  }
+    if (FLAG_verify_heap) {
+      receiver->HeapObjectVerify(it->isolate());
+    }
 #endif
 
     return Just(true);
@@ -3981,25 +3981,18 @@ bool DescriptorArray::IsEqualUpTo(DescriptorArray desc, int nof_descriptors) {
 Handle<FixedArray> FixedArray::SetAndGrow(Isolate* isolate,
                                           Handle<FixedArray> array, int index,
                                           Handle<Object> value) {
-  int src_length = array->length();
-  if (index < src_length) {
+  if (index < array->length()) {
     array->set(index, *value);
     return array;
   }
-  int capacity = src_length;
+  int capacity = array->length();
   do {
     capacity = JSObject::NewElementsCapacity(capacity);
   } while (capacity <= index);
   Handle<FixedArray> new_array = isolate->factory()->NewFixedArray(capacity);
-
-  DisallowGarbageCollection no_gc;
-  auto raw_src = *array;
-  auto raw_dst = *new_array;
-  raw_src.CopyTo(0, raw_dst, 0, src_length);
-  DCHECK_EQ(raw_dst.length(), capacity);
-  raw_dst.FillWithHoles(src_length, capacity);
-  raw_dst.set(index, *value);
-
+  array->CopyTo(0, *new_array, 0, array->length());
+  new_array->FillWithHoles(array->length(), new_array->length());
+  new_array->set(index, *value);
   return new_array;
 }
 
@@ -4566,11 +4559,8 @@ int16_t DescriptorArray::UpdateNumberOfMarkedDescriptors(
 Handle<AccessorPair> AccessorPair::Copy(Isolate* isolate,
                                         Handle<AccessorPair> pair) {
   Handle<AccessorPair> copy = isolate->factory()->NewAccessorPair();
-  DisallowGarbageCollection no_gc;
-  auto raw_src = *pair;
-  auto raw_copy = *copy;
-  raw_copy.set_getter(raw_src.getter());
-  raw_copy.set_setter(raw_src.setter());
+  copy->set_getter(pair->getter());
+  copy->set_setter(pair->setter());
   return copy;
 }
 
@@ -5122,9 +5112,8 @@ MaybeHandle<SharedFunctionInfo> Script::FindSharedFunctionInfo(
     Handle<Script> script, IsolateT* isolate,
     FunctionLiteral* function_literal) {
   int function_literal_id = function_literal->function_literal_id();
-  if (V8_UNLIKELY(script->type() == Script::TYPE_WEB_SNAPSHOT &&
-                  function_literal_id >=
-                      script->shared_function_info_count())) {
+  if V8_UNLIKELY (script->type() == Script::TYPE_WEB_SNAPSHOT &&
+                  function_literal_id >= script->shared_function_info_count()) {
     return FindWebSnapshotSharedFunctionInfo(script, isolate, function_literal);
   }
 
@@ -5338,7 +5327,7 @@ AllocationType AllocationSite::GetAllocationType() const {
 }
 
 bool AllocationSite::IsNested() {
-  DCHECK(v8_flags.trace_track_allocation_sites);
+  DCHECK(FLAG_trace_track_allocation_sites);
   Object current = boilerplate().GetHeap()->allocation_sites_list();
   while (current.IsAllocationSite()) {
     AllocationSite current_site = AllocationSite::cast(current);
@@ -5799,11 +5788,10 @@ Handle<Derived> HashTable<Derived, Shape>::NewInternal(
   Handle<FixedArray> array = factory->NewFixedArrayWithMap(
       Derived::GetMap(ReadOnlyRoots(isolate)), length, allocation);
   Handle<Derived> table = Handle<Derived>::cast(array);
-  DisallowGarbageCollection no_gc;
-  auto raw_table = *table;
-  raw_table.SetNumberOfElements(0);
-  raw_table.SetNumberOfDeletedElements(0);
-  raw_table.SetCapacity(capacity);
+
+  table->SetNumberOfElements(0);
+  table->SetNumberOfDeletedElements(0);
+  table->SetCapacity(capacity);
   return table;
 }
 

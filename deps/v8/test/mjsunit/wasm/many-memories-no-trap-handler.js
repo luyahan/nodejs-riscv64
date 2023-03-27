@@ -4,6 +4,9 @@
 
 // Flags: --no-wasm-trap-handler
 
+// No reason to stress-opt this; save some time.
+// Flags: --no-stress-opt
+
 d8.file.execute('test/mjsunit/wasm/wasm-module-builder.js');
 
 // Without trap handlers, we are able to allocate basically arbitrarily many

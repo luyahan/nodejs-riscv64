@@ -54,6 +54,11 @@
   # Boot up memory use is bloated in debug mode.
   'test-mark-compact/BootUpMemoryUse': [PASS, ['mode == debug', FAIL]],
 
+  # This tests only that the preparser and parser agree, so there is no point in
+  # running several variants. Note that this still takes ages, because there
+  # are actually 13 * 38 * 5 * 128 = 316160 individual tests hidden here.
+  'test-parsing/ParserSync': [PASS, NO_VARIANTS],
+
   # This tests API threading, no point in running several variants.
   'test-api/Threading*': [PASS, SLOW, NO_VARIANTS],
 
@@ -99,6 +104,7 @@
   'test-jump-table-assembler/JumpTablePatchingStress': [PASS, SLOW],
   'test-strings/StringOOM*': [PASS, ['mode == debug', SKIP]],
   'test-serialize/CustomSnapshotDataBlobImmortalImmovableRoots': [PASS, ['mode == debug', SKIP]],
+  'test-parsing/ObjectRestNegativeTestSlow': [PASS, ['mode == debug', SKIP]],
 
   # Tests that need to run sequentially (e.g. due to memory consumption).
   'test-accessors/HandleScopePop': [PASS, HEAVY],
@@ -319,6 +325,29 @@
 }],  # 'arch == arm'
 
 ##############################################################################
+['arch == mipsel or arch == mips', {
+  # TODO(mips-team): Improve code-size on large RegExp's.
+  'test-heap/TestSizeOfRegExpCode':  [SKIP],
+
+  # BUG(1075): Unresolved crashes on MIPS also.
+  'test-serialize/StartupSerializerOnce': [SKIP],
+  'test-serialize/StartupSerializerTwice': [SKIP],
+  'test-serialize/StartupSerializerOnceRunScript': [SKIP],
+  'test-serialize/StartupSerializerTwiceRunScript': [SKIP],
+}],  # 'arch == mipsel or arch == mips'
+
+##############################################################################
+['arch == mips', {
+  # Too slow with TF.
+  'test-api/ExternalArrays': [PASS, NO_VARIANTS],
+
+  # TODO(mips-team): Currently fails on mips board.
+  'test-parsing/TooManyArguments': [SKIP],
+  'test-api/Threading5': [SKIP],
+  'test-api/Threading6': [SKIP],
+}],  # 'arch == mips'
+
+##############################################################################
 ['arch == mips64', {
   # TODO(mips-team): Currently fails on mips64 board.
   'test-run-wasm/RunWasmLiftoff_I32Binop*': [SKIP],
@@ -343,21 +372,21 @@
 }],  # 'arch == mips64el or arch == mips64'
 
 ##############################################################################
-['(arch == mips64el or arch == mips64) and not simd_mips', {
+['(arch == mipsel or arch == mips64el or arch == mips or arch == mips64) and not simd_mips', {
   # Skip tests that fail on MIPS architectures which don't support SIMD,
   # because lowering mechanism doesn't work properly
   'test-run-wasm-simd/RunWasm_ReductionTest4_compiled': [SKIP],
   'test-run-wasm-simd/RunWasm_ReductionTest8_compiled': [SKIP],
   'test-run-wasm-simd/RunWasm_ReductionTest16_compiled': [SKIP],
   'test-run-wasm-simd-liftoff/*': [SKIP],
-}],  # '(arch == mips64el or arch == mips64) and not simd_mips'
+}],  # '(arch == mipsel or arch == mips64el or arch == mips or arch == mips64) and not simd_mips'
 
-['(arch == mips64el or arch == mips64) and not simd_mips', {
+['(arch == mipsel or arch == mips64el or arch == mips or arch == mips64) and not simd_mips', {
   'test-gc/RunWasmLiftoff_RefTrivialCasts': [SKIP],
   'test-gc/RunWasmTurbofan_RefTrivialCasts': [SKIP],
   'test-run-wasm/RunWasmLiftoff_Select_s128_parameters': [SKIP],
   'test-run-wasm/RunWasmTurbofan_Select_s128_parameters': [SKIP],
-}],  # '(arch == mips64el or arch == mips64) and not simd_mips'
+}],  # '(arch == mipsel or arch == mips64el or arch == mips or arch == mips64) and not simd_mips'
 
 ##############################################################################
 ['mips_arch_variant == r6', {
@@ -468,7 +497,6 @@
 ['arch == ppc64', {
   # SIMD / Liftoff not fully implemented yet
   'test-run-wasm-simd-liftoff/*': [SKIP],
-  'test-run-wasm-relaxed-simd/*': [SKIP],
   'test-gc/RunWasmLiftoff_RefTrivialCasts': [SKIP],
   'test-gc/RunWasmLiftoff_RefTrivialCastsStatic': [SKIP],
 }],
@@ -498,6 +526,7 @@
   'test-serialize/*': [SKIP],
   'test-strings/*': [SKIP],
   'test-field-type-tracking/*': [SKIP],
+  'test-parsing/*': [SKIP],
   'test-page-promotion/*': [SKIP],
   'test-gap-resolver/*': [SKIP],
   'test-dtoa/*': [SKIP],
@@ -559,12 +588,14 @@
   'test-multiple-return/*': [SKIP],
   'test-run-bytecode-graph-builder/*': [SKIP],
   'test-run-calls-to-external-references/*': [SKIP],
+  'test-run-deopt/*': [SKIP],
   'test-run-intrinsics/*': [SKIP],
 
   'test-run-load-store/*': [SKIP],
   'test-run-machops/*': [SKIP],
   'test-run-native-calls/*': [SKIP],
   'test-run-stackcheck/*': [SKIP],
+  'test-run-tail-calls/*': [SKIP],
   'test-run-unwinding-info/*': [SKIP],
   'test-run-variables/*': [SKIP],
   'test-serialize/*': [SKIP],

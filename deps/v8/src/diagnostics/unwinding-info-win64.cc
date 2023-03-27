@@ -10,6 +10,7 @@
 #if defined(V8_OS_WIN_X64)
 #include "src/codegen/x64/assembler-x64.h"
 #elif defined(V8_OS_WIN_ARM64)
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/arm64/assembler-arm64-inl.h"
 #include "src/codegen/arm64/macro-assembler-arm64-inl.h"
 #else
@@ -20,36 +21,6 @@
 
 // This has to come after windows.h.
 #include <versionhelpers.h>  // For IsWindows8OrGreater().
-
-// Forward declaration to keep this independent of Win8
-NTSYSAPI
-DWORD
-NTAPI
-RtlAddGrowableFunctionTable(
-    _Out_ PVOID* DynamicTable,
-    _In_reads_(MaximumEntryCount) PRUNTIME_FUNCTION FunctionTable,
-    _In_ DWORD EntryCount,
-    _In_ DWORD MaximumEntryCount,
-    _In_ ULONG_PTR RangeBase,
-    _In_ ULONG_PTR RangeEnd
-    );
-
-
-NTSYSAPI
-void
-NTAPI
-RtlGrowFunctionTable(
-    _Inout_ PVOID DynamicTable,
-    _In_ DWORD NewEntryCount
-    );
-
-
-NTSYSAPI
-void
-NTAPI
-RtlDeleteGrowableFunctionTable(
-    _In_ PVOID DynamicTable
-    );
 
 namespace v8 {
 namespace internal {

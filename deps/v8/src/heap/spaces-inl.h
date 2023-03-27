@@ -252,11 +252,12 @@ AllocationResult SpaceWithLinearArea::AllocateFastAligned(
 AllocationResult SpaceWithLinearArea::AllocateRaw(int size_in_bytes,
                                                   AllocationAlignment alignment,
                                                   AllocationOrigin origin) {
-  DCHECK(!v8_flags.enable_third_party_heap);
+  DCHECK(!FLAG_enable_third_party_heap);
 
   AllocationResult result;
 
-  if (USE_ALLOCATION_ALIGNMENT_BOOL && alignment != kTaggedAligned) {
+  if (V8_COMPRESS_POINTERS_8GB_BOOL ||
+      (USE_ALLOCATION_ALIGNMENT_BOOL && alignment != kTaggedAligned)) {
     result = AllocateFastAligned(size_in_bytes, nullptr, alignment, origin);
   } else {
     result = AllocateFastUnaligned(size_in_bytes, origin);
@@ -268,7 +269,7 @@ AllocationResult SpaceWithLinearArea::AllocateRaw(int size_in_bytes,
 
 AllocationResult SpaceWithLinearArea::AllocateRawUnaligned(
     int size_in_bytes, AllocationOrigin origin) {
-  DCHECK(!v8_flags.enable_third_party_heap);
+  DCHECK(!FLAG_enable_third_party_heap);
   int max_aligned_size;
   if (!EnsureAllocation(size_in_bytes, kTaggedAligned, origin,
                         &max_aligned_size)) {
@@ -281,7 +282,7 @@ AllocationResult SpaceWithLinearArea::AllocateRawUnaligned(
   AllocationResult result = AllocateFastUnaligned(size_in_bytes, origin);
   DCHECK(!result.IsFailure());
 
-  if (v8_flags.trace_allocations_origins) {
+  if (FLAG_trace_allocations_origins) {
     UpdateAllocationOrigins(origin);
   }
 
@@ -293,7 +294,7 @@ AllocationResult SpaceWithLinearArea::AllocateRawUnaligned(
 
 AllocationResult SpaceWithLinearArea::AllocateRawAligned(
     int size_in_bytes, AllocationAlignment alignment, AllocationOrigin origin) {
-  DCHECK(!v8_flags.enable_third_party_heap);
+  DCHECK(!FLAG_enable_third_party_heap);
   int max_aligned_size;
   if (!EnsureAllocation(size_in_bytes, alignment, origin, &max_aligned_size)) {
     return AllocationResult::Failure();
@@ -309,7 +310,7 @@ AllocationResult SpaceWithLinearArea::AllocateRawAligned(
   DCHECK_GE(max_aligned_size, aligned_size_in_bytes);
   DCHECK(!result.IsFailure());
 
-  if (v8_flags.trace_allocations_origins) {
+  if (FLAG_trace_allocations_origins) {
     UpdateAllocationOrigins(origin);
   }
 
@@ -322,7 +323,8 @@ AllocationResult SpaceWithLinearArea::AllocateRawAligned(
 AllocationResult SpaceWithLinearArea::AllocateRawSlow(
     int size_in_bytes, AllocationAlignment alignment, AllocationOrigin origin) {
   AllocationResult result =
-      USE_ALLOCATION_ALIGNMENT_BOOL && alignment != kTaggedAligned
+      V8_COMPRESS_POINTERS_8GB_BOOL ||
+              (USE_ALLOCATION_ALIGNMENT_BOOL && alignment != kTaggedAligned)
           ? AllocateRawAligned(size_in_bytes, alignment, origin)
           : AllocateRawUnaligned(size_in_bytes, origin);
   return result;

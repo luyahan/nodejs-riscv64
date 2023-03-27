@@ -26,7 +26,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Flags: --allow-natives-syntax
-// Flags:
+// Flags: --nostress-opt
 
 // This code exists to eliminate the learning influence of AllocationSites
 // on the following tests.

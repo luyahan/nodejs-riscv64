@@ -41,13 +41,12 @@ constexpr size_t kGuardPageSize = 4096;
 static constexpr size_t kLargeObjectSizeThreshold = kPageSize / 2;
 
 #if defined(CPPGC_CAGED_HEAP)
-#if defined(CPPGC_2GB_CAGE)
 constexpr size_t kCagedHeapReservationSize = static_cast<size_t>(2) * kGB;
-#else   // !defined(CPPGC_2GB_CAGE)
-constexpr size_t kCagedHeapReservationSize = static_cast<size_t>(4) * kGB;
-#endif  // !defined(CPPGC_2GB_CAGE)
 constexpr size_t kCagedHeapReservationAlignment = kCagedHeapReservationSize;
-#endif  // defined(CPPGC_CAGED_HEAP)
+
+constexpr size_t kCagedHeapNormalPageReservationSize =
+    kCagedHeapReservationSize / 2;
+#endif
 
 static constexpr size_t kDefaultAlignment = sizeof(void*);
 

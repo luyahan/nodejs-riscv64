@@ -5,6 +5,7 @@
 #ifndef V8_WASM_BASELINE_S390_LIFTOFF_ASSEMBLER_S390_H_
 #define V8_WASM_BASELINE_S390_LIFTOFF_ASSEMBLER_S390_H_
 
+#include "src/base/platform/wrappers.h"
 #include "src/base/v8-fallthrough.h"
 #include "src/codegen/assembler.h"
 #include "src/heap/memory-chunk.h"
@@ -1550,12 +1551,6 @@ void LiftoffAssembler::FillStackSlotsWithZero(int start, int size) {
   }
 
   pop(r0);
-}
-
-void LiftoffAssembler::LoadSpillAddress(Register dst, int offset,
-                                        ValueKind kind) {
-  if (kind == kI32) offset = offset + stack_bias;
-  SubS64(dst, fp, Operand(offset));
 }
 
 #define SIGN_EXT(r) lgfr(r, r)

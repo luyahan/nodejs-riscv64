@@ -317,11 +317,7 @@ TARGET_TEST_F(InterpreterAssemblerTest, BytecodeOperand) {
                         m.IsUnsignedOperand(offset, operand_size));
             break;
           case interpreter::OperandType::kFlag8:
-            EXPECT_THAT(m.BytecodeOperandFlag8(i),
-                        m.IsUnsignedOperand(offset, operand_size));
-            break;
-          case interpreter::OperandType::kFlag16:
-            EXPECT_THAT(m.BytecodeOperandFlag16(i),
+            EXPECT_THAT(m.BytecodeOperandFlag(i),
                         m.IsUnsignedOperand(offset, operand_size));
             break;
           case interpreter::OperandType::kIdx:

@@ -5,9 +5,7 @@
 import("../../gni/v8.gni")
 
 if (is_fuchsia) {
-  import("//build/config/fuchsia/generate_runner_scripts.gni")
-  import("//third_party/fuchsia-sdk/sdk/build/component.gni")
-  import("//third_party/fuchsia-sdk/sdk/build/package.gni")
+  import("//build/config/fuchsia/rules.gni")
 
   fuchsia_component("v8_unittests_component") {
     testonly = true
@@ -231,8 +229,10 @@ v8_source_set("unittests_sources") {
     "../common/assembler-tester.h",
     "../common/c-signature.h",
     "../common/call-tester.h",
-    "../common/code-assembler-tester.h",
     "../common/node-observer-tester.h",
+    "../common/scope-test-helper.h",
+    "../common/unicode-helpers.cc",
+    "../common/unicode-helpers.h",
     "../common/value-helper.cc",
     "../common/value-helper.h",
     "api/access-check-unittest.cc",
@@ -354,7 +354,6 @@ v8_source_set("unittests_sources") {
     "compiler/run-jsexceptions-unittest.cc",
     "compiler/run-jsobjects-unittest.cc",
     "compiler/run-jsops-unittest.cc",
-    "compiler/run-tail-calls-unittest.cc",
     "compiler/schedule-unittest.cc",
     "compiler/scheduler-rpo-unittest.cc",
     "compiler/scheduler-unittest.cc",
@@ -491,13 +490,9 @@ v8_source_set("unittests_sources") {
     "parser/ast-value-unittest.cc",
     "parser/decls-unittest.cc",
     "parser/parse-decision-unittest.cc",
-    "parser/parsing-unittest.cc",
     "parser/preparser-unittest.cc",
     "parser/scanner-streams-unittest.cc",
     "parser/scanner-unittest.cc",
-    "parser/scope-test-helper.h",
-    "parser/unicode-helpers.cc",
-    "parser/unicode-helpers.h",
     "profiler/circular-queue-unittest.cc",
     "profiler/strings-storage-unittest.cc",
     "regexp/regexp-unittest.cc",
@@ -608,6 +603,11 @@ v8_source_set("unittests_sources") {
       "assembler/disasm-ia32-unittest.cc",
       "assembler/turbo-assembler-ia32-unittest.cc",
       "compiler/ia32/instruction-selector-ia32-unittest.cc",
+    ]
+  } else if (v8_current_cpu == "mips" || v8_current_cpu == "mipsel") {
+    sources += [
+      "assembler/turbo-assembler-mips-unittest.cc",
+      "compiler/mips/instruction-selector-mips-unittest.cc",
     ]
   } else if (v8_current_cpu == "mips64" || v8_current_cpu == "mips64el") {
     sources += [

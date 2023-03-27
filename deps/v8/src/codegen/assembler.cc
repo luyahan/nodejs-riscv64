@@ -67,7 +67,7 @@ AssemblerOptions AssemblerOptions::Default(Isolate* isolate) {
 
   // So here we enable simulator specific code if not generating the snapshot or
   // if we are but we are targetting the simulator *only*.
-  options.enable_simulator_code = !serializer || v8_flags.target_is_simulator;
+  options.enable_simulator_code = !serializer || FLAG_target_is_simulator;
 #endif
 
 #if V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64
@@ -77,7 +77,7 @@ AssemblerOptions AssemblerOptions::Default(Isolate* isolate) {
       isolate->is_short_builtin_calls_enabled() &&
       !generating_embedded_builtin &&
       (options.code_range_base != kNullAddress) &&
-      // Serialization of NEAR_BUILTIN_ENTRY reloc infos is not supported yet.
+      // Serialization of RUNTIME_ENTRY reloc infos is not supported yet.
       !serializer;
   if (short_builtin_calls) {
     options.builtin_call_jump_mode = BuiltinCallJumpMode::kPCRelative;
@@ -304,7 +304,7 @@ Handle<HeapObject> AssemblerBase::GetEmbeddedObject(
 
 
 int Assembler::WriteCodeComments() {
-  if (!v8_flags.code_comments) return 0;
+  if (!FLAG_code_comments) return 0;
   CHECK_IMPLIES(code_comments_writer_.entry_count() > 0,
                 options().emit_code_comments);
   if (code_comments_writer_.entry_count() == 0) return 0;

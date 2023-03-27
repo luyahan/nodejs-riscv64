@@ -87,8 +87,6 @@ class MaglevConcurrentDispatcher final {
   // Called from the main thread.
   void FinalizeFinishedJobs();
 
-  void AwaitCompileJobs();
-
   bool is_enabled() const { return static_cast<bool>(job_handle_); }
 
  private:

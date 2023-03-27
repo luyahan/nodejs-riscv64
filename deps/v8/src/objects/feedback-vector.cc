@@ -393,7 +393,7 @@ void FeedbackVector::SetOptimizedCode(CodeT code) {
          optimized_code().marked_for_deoptimization() ||
          (CodeKindCanTierUp(optimized_code().kind()) &&
           optimized_code().kind() < code.kind()) ||
-         v8_flags.stress_concurrent_inlining_attach_code);
+         FLAG_stress_concurrent_inlining_attach_code);
   // TODO(mythria): We could see a CompileOptimized state here either from
   // tests that use %OptimizeFunctionOnNextCall, --always-turbofan or because we
   // re-mark the function for non-concurrent optimization after an OSR. We
@@ -443,7 +443,6 @@ void FeedbackVector::set_tiering_state(TieringState state) {
 
 void FeedbackVector::reset_flags() {
   set_flags(TieringStateBits::encode(TieringState::kNone) |
-            LogNextExecutionBit::encode(false) |
             MaybeHasMaglevCodeBit::encode(false) |
             MaybeHasTurbofanCodeBit::encode(false) |
             OsrTieringStateBit::encode(TieringState::kNone) |
@@ -479,7 +478,7 @@ void FeedbackVector::EvictOptimizedCodeMarkedForDeoptimization(
   }
 }
 
-bool FeedbackVector::ClearSlots(Isolate* isolate, ClearBehavior behavior) {
+bool FeedbackVector::ClearSlots(Isolate* isolate) {
   if (!shared_function_info().HasFeedbackMetadata()) return false;
   MaybeObject uninitialized_sentinel = MaybeObject::FromObject(
       FeedbackVector::RawUninitializedSentinel(isolate));
@@ -492,7 +491,7 @@ bool FeedbackVector::ClearSlots(Isolate* isolate, ClearBehavior behavior) {
     MaybeObject obj = Get(slot);
     if (obj != uninitialized_sentinel) {
       FeedbackNexus nexus(*this, slot);
-      feedback_updated |= nexus.Clear(behavior);
+      feedback_updated |= nexus.Clear();
     }
   }
   return feedback_updated;
@@ -609,37 +608,23 @@ void FeedbackNexus::ConfigureUninitialized() {
   }
 }
 
-bool FeedbackNexus::Clear(ClearBehavior behavior) {
+bool FeedbackNexus::Clear() {
   bool feedback_updated = false;
 
   switch (kind()) {
     case FeedbackSlotKind::kTypeProfile:
-      if (V8_LIKELY(behavior == ClearBehavior::kDefault)) {
-        // We don't clear these kinds ever.
-      } else if (!IsCleared()) {
-        DCHECK_EQ(behavior, ClearBehavior::kClearAll);
-        SetFeedback(UninitializedSentinel(), SKIP_WRITE_BARRIER);
-        feedback_updated = true;
-      }
+      // We don't clear these kinds ever.
       break;
 
     case FeedbackSlotKind::kCompareOp:
     case FeedbackSlotKind::kForIn:
     case FeedbackSlotKind::kBinaryOp:
-      if (V8_LIKELY(behavior == ClearBehavior::kDefault)) {
-        // We don't clear these, either.
-      } else if (!IsCleared()) {
-        DCHECK_EQ(behavior, ClearBehavior::kClearAll);
-        SetFeedback(Smi::zero(), SKIP_WRITE_BARRIER);
-        feedback_updated = true;
-      }
+      // We don't clear these, either.
       break;
 
     case FeedbackSlotKind::kLiteral:
-      if (!IsCleared()) {
-        SetFeedback(Smi::zero(), SKIP_WRITE_BARRIER);
-        feedback_updated = true;
-      }
+      SetFeedback(Smi::zero(), SKIP_WRITE_BARRIER);
+      feedback_updated = true;
       break;
 
     case FeedbackSlotKind::kSetNamedSloppy:
@@ -938,18 +923,16 @@ void FeedbackNexus::ConfigureCloneObject(Handle<Map> source_map,
         // Transition to POLYMORPHIC.
         Handle<WeakFixedArray> array =
             CreateArrayOfSize(2 * kCloneObjectPolymorphicEntrySize);
-        DisallowGarbageCollection no_gc;
-        auto raw_array = *array;
-        raw_array.Set(0, HeapObjectReference::Weak(*feedback));
-        raw_array.Set(1, GetFeedbackExtra());
-        raw_array.Set(2, HeapObjectReference::Weak(*source_map));
-        raw_array.Set(3, MaybeObject::FromObject(*result_map));
-        SetFeedback(raw_array, UPDATE_WRITE_BARRIER,
+        array->Set(0, HeapObjectReference::Weak(*feedback));
+        array->Set(1, GetFeedbackExtra());
+        array->Set(2, HeapObjectReference::Weak(*source_map));
+        array->Set(3, MaybeObject::FromObject(*result_map));
+        SetFeedback(*array, UPDATE_WRITE_BARRIER,
                     HeapObjectReference::ClearedValue(isolate));
       }
       break;
     case InlineCacheState::POLYMORPHIC: {
-      const int kMaxElements = v8_flags.max_valid_polymorphic_map_count *
+      const int kMaxElements = FLAG_max_valid_polymorphic_map_count *
                                kCloneObjectPolymorphicEntrySize;
       Handle<WeakFixedArray> array = Handle<WeakFixedArray>::cast(feedback);
       int i = 0;

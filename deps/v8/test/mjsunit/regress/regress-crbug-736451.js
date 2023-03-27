@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Flags: --expose-externalize-string
+// Flags: --expose-externalize-string --no-stress-opt
 
 !function() {
   const s0 = "external string turned into two byte";

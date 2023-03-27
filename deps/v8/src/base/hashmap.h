@@ -14,7 +14,7 @@
 #include "src/base/bits.h"
 #include "src/base/hashmap-entry.h"
 #include "src/base/logging.h"
-#include "src/base/platform/memory.h"
+#include "src/base/platform/wrappers.h"
 
 namespace v8 {
 namespace base {

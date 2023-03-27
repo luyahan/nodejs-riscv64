@@ -190,7 +190,7 @@ struct V8_EXPORT_PRIVATE AssemblerOptions {
   // on a function prologue/epilogue.
   bool collect_win64_unwind_info = false;
   // Whether to emit code comments.
-  bool emit_code_comments = v8_flags.code_comments;
+  bool emit_code_comments = FLAG_code_comments;
 
   static AssemblerOptions Default(Isolate* isolate);
   static AssemblerOptions DefaultForOffHeapTrampoline(Isolate* isolate);
@@ -245,7 +245,7 @@ class V8_EXPORT_PRIVATE AssemblerBase : public Malloced {
   }
 
   bool is_constant_pool_available() const {
-    if (v8_flags.enable_embedded_constant_pool) {
+    if (FLAG_enable_embedded_constant_pool) {
       // We need to disable constant pool here for embeded builtins
       // because the metadata section is not adjacent to instructions
       return constant_pool_available_ && !options().isolate_independent_code;
@@ -271,7 +271,8 @@ class V8_EXPORT_PRIVATE AssemblerBase : public Malloced {
   int pc_offset() const { return static_cast<int>(pc_ - buffer_start_); }
 
   int pc_offset_for_safepoint() {
-#if defined(V8_TARGET_ARCH_MIPS64) || defined(V8_TARGET_ARCH_LOONG64)
+#if defined(V8_TARGET_ARCH_MIPS) || defined(V8_TARGET_ARCH_MIPS64) || \
+    defined(V8_TARGET_ARCH_LOONG64)
     // MIPS and LOONG need to use their own implementation to avoid trampoline's
     // influence.
     UNREACHABLE();
@@ -305,7 +306,7 @@ class V8_EXPORT_PRIVATE AssemblerBase : public Malloced {
   V8_INLINE void RecordComment(const char* comment) {
     // Set explicit dependency on --code-comments for dead-code elimination in
     // release builds.
-    if (!v8_flags.code_comments) return;
+    if (!FLAG_code_comments) return;
     if (options().emit_code_comments) {
       code_comments_writer_.Add(pc_offset(), std::string(comment));
     }
@@ -314,7 +315,7 @@ class V8_EXPORT_PRIVATE AssemblerBase : public Malloced {
   V8_INLINE void RecordComment(std::string comment) {
     // Set explicit dependency on --code-comments for dead-code elimination in
     // release builds.
-    if (!v8_flags.code_comments) return;
+    if (!FLAG_code_comments) return;
     if (options().emit_code_comments) {
       code_comments_writer_.Add(pc_offset(), std::move(comment));
     }
@@ -325,10 +326,10 @@ class V8_EXPORT_PRIVATE AssemblerBase : public Malloced {
    public:
     explicit CodeComment(Assembler* assembler, const std::string& comment)
         : assembler_(assembler) {
-      if (v8_flags.code_comments) Open(comment);
+      if (FLAG_code_comments) Open(comment);
     }
     ~CodeComment() {
-      if (v8_flags.code_comments) Close();
+      if (FLAG_code_comments) Close();
     }
     static const int kIndentWidth = 2;
 
@@ -374,7 +375,7 @@ class V8_EXPORT_PRIVATE AssemblerBase : public Malloced {
   byte* pc_;
 
   void set_constant_pool_available(bool available) {
-    if (v8_flags.enable_embedded_constant_pool) {
+    if (FLAG_enable_embedded_constant_pool) {
       constant_pool_available_ = available;
     } else {
       // Embedded constant pool not supported on this architecture.
@@ -393,8 +394,7 @@ class V8_EXPORT_PRIVATE AssemblerBase : public Malloced {
     DCHECK(!RelocInfo::IsNoInfo(rmode));
     if (options().disable_reloc_info_for_patching) return false;
     if (RelocInfo::IsOnlyForSerializer(rmode) &&
-        !options().record_reloc_info_for_serialization &&
-        !v8_flags.debug_code) {
+        !options().record_reloc_info_for_serialization && !FLAG_debug_code) {
       return false;
     }
 #ifndef ENABLE_DISASSEMBLER
@@ -488,7 +488,7 @@ class V8_EXPORT_PRIVATE V8_NODISCARD CpuFeatureScope {
 #define NOOP_UNLESS_DEBUG_CODE ;
 #else
 #define NOOP_UNLESS_DEBUG_CODE \
-  { static_assert(v8_flags.debug_code.value() == false); }
+  { static_assert(FLAG_debug_code.value() == false); }
 #endif
 
 }  // namespace internal

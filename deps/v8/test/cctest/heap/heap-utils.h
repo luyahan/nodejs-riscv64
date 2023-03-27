@@ -46,10 +46,10 @@ std::vector<Handle<FixedArray>> CreatePadding(
     Heap* heap, int padding_size, AllocationType allocation,
     int object_size = kMaxRegularHeapObjectSize);
 
-void FillCurrentPage(v8::internal::NewSpace* space,
+bool FillCurrentPage(v8::internal::NewSpace* space,
                      std::vector<Handle<FixedArray>>* out_handles = nullptr);
 
-void FillCurrentPageButNBytes(
+bool FillCurrentPageButNBytes(
     v8::internal::NewSpace* space, int extra_bytes,
     std::vector<Handle<FixedArray>>* out_handles = nullptr);
 

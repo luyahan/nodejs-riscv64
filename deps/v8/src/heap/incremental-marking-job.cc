@@ -41,7 +41,7 @@ void IncrementalMarkingJob::ScheduleTask() {
   base::MutexGuard guard(&mutex_);
 
   if (is_task_pending_ || heap_->IsTearingDown() ||
-      !v8_flags.incremental_marking_task) {
+      !FLAG_incremental_marking_task) {
     return;
   }
 
@@ -93,14 +93,14 @@ void IncrementalMarkingJob::Task::RunInternal() {
     job_->is_task_pending_ = false;
   }
 
-  if (incremental_marking->IsMajorMarking()) {
+  if (incremental_marking->IsMarking()) {
     // All objects are initialized at that point.
     heap->new_space()->MarkLabStartInitialized();
     heap->new_lo_space()->ResetPendingObject();
 
     heap->incremental_marking()->AdvanceAndFinalizeIfComplete();
 
-    if (incremental_marking->IsMajorMarking()) {
+    if (incremental_marking->IsMarking()) {
       // TODO(v8:12775): It is quite suprising that we schedule the task
       // immediately here. This was introduced since delayed task were
       // unreliable at some point. Investigate whether this is still the case

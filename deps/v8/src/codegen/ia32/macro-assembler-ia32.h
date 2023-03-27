@@ -561,11 +561,11 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
                                            Register closure, Register scratch1,
                                            Register slot_address);
   void GenerateTailCallToReturnedCode(Runtime::FunctionId function_id);
-  void LoadFeedbackVectorFlagsAndJumpIfNeedsProcessing(
-      Register flags, XMMRegister saved_feedback_vector,
-      CodeKind current_code_kind, Label* flags_need_processing);
+  void LoadTieringStateAndJumpIfNeedsProcessing(
+      Register optimization_state, XMMRegister saved_feedback_vector,
+      CodeKind current_code_kind, Label* has_optimized_code_or_state);
   void MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(
-      Register flags, XMMRegister saved_feedback_vector);
+      Register optimization_state, XMMRegister saved_feedback_vector);
 
   // Abort execution if argument is not a smi, enabled via --debug-code.
   void AssertSmi(Register object) NOOP_UNLESS_DEBUG_CODE
@@ -651,12 +651,12 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   // StatsCounter support
 
   void IncrementCounter(StatsCounter* counter, int value, Register scratch) {
-    if (!v8_flags.native_code_counters) return;
+    if (!FLAG_native_code_counters) return;
     EmitIncrementCounter(counter, value, scratch);
   }
   void EmitIncrementCounter(StatsCounter* counter, int value, Register scratch);
   void DecrementCounter(StatsCounter* counter, int value, Register scratch) {
-    if (!v8_flags.native_code_counters) return;
+    if (!FLAG_native_code_counters) return;
     EmitDecrementCounter(counter, value, scratch);
   }
   void EmitDecrementCounter(StatsCounter* counter, int value, Register scratch);

@@ -415,7 +415,6 @@ class V8_EXPORT_PRIVATE TurboAssembler
   void LoadCodeTEntry(Register destination, Register code);
   void CallCodeTObject(Register code);
   void JumpCodeTObject(Register code, JumpMode jump_mode = JumpMode::kJump);
-  void CodeDataContainerFromCodeT(Register destination, Register codet);
 
   void Jump(Address destination, RelocInfo::Mode rmode);
   void Jump(const ExternalReference& reference);
@@ -837,11 +836,11 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
                                            Register slot_address);
   void GenerateTailCallToReturnedCode(Runtime::FunctionId function_id,
                                       JumpMode jump_mode = JumpMode::kJump);
-  void LoadFeedbackVectorFlagsAndJumpIfNeedsProcessing(
-      Register flags, Register feedback_vector, CodeKind current_code_kind,
-      Label* flags_need_processing);
+  void LoadTieringStateAndJumpIfNeedsProcessing(
+      Register optimization_state, Register feedback_vector,
+      CodeKind current_code_kind, Label* has_optimized_code_or_state);
   void MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(
-      Register flags, Register feedback_vector, Register closure,
+      Register optimization_state, Register feedback_vector, Register closure,
       JumpMode jump_mode = JumpMode::kJump);
 
   // Abort execution if argument is not a CodeT, enabled via --debug-code.
@@ -919,12 +918,12 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   // ---------------------------------------------------------------------------
   // StatsCounter support
   void IncrementCounter(StatsCounter* counter, int value) {
-    if (!v8_flags.native_code_counters) return;
+    if (!FLAG_native_code_counters) return;
     EmitIncrementCounter(counter, value);
   }
   void EmitIncrementCounter(StatsCounter* counter, int value);
   void DecrementCounter(StatsCounter* counter, int value) {
-    if (!v8_flags.native_code_counters) return;
+    if (!FLAG_native_code_counters) return;
     EmitDecrementCounter(counter, value);
   }
   void EmitDecrementCounter(StatsCounter* counter, int value);

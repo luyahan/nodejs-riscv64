@@ -51,6 +51,9 @@ enum class SmiCheck { kOmit, kInline };
 #elif V8_TARGET_ARCH_PPC || V8_TARGET_ARCH_PPC64
 #include "src/codegen/ppc/constants-ppc.h"
 #include "src/codegen/ppc/macro-assembler-ppc.h"
+#elif V8_TARGET_ARCH_MIPS
+#include "src/codegen/mips/constants-mips.h"
+#include "src/codegen/mips/macro-assembler-mips.h"
 #elif V8_TARGET_ARCH_MIPS64
 #include "src/codegen/mips64/constants-mips64.h"
 #include "src/codegen/mips64/macro-assembler-mips64.h"
@@ -136,10 +139,10 @@ class V8_NODISCARD FrameAndConstantPoolScope {
       : masm_(masm),
         type_(type),
         old_has_frame_(masm->has_frame()),
-        old_constant_pool_available_(v8_flags.enable_embedded_constant_pool &&
+        old_constant_pool_available_(FLAG_enable_embedded_constant_pool &&
                                      masm->is_constant_pool_available()) {
     masm->set_has_frame(true);
-    if (v8_flags.enable_embedded_constant_pool) {
+    if (FLAG_enable_embedded_constant_pool) {
       masm->set_constant_pool_available(true);
     }
     if (type_ != StackFrame::MANUAL && type_ != StackFrame::NO_FRAME_TYPE) {
@@ -150,7 +153,7 @@ class V8_NODISCARD FrameAndConstantPoolScope {
   ~FrameAndConstantPoolScope() {
     masm_->LeaveFrame(type_);
     masm_->set_has_frame(old_has_frame_);
-    if (v8_flags.enable_embedded_constant_pool) {
+    if (FLAG_enable_embedded_constant_pool) {
       masm_->set_constant_pool_available(old_constant_pool_available_);
     }
   }
@@ -169,14 +172,14 @@ class V8_NODISCARD ConstantPoolUnavailableScope {
  public:
   explicit ConstantPoolUnavailableScope(Assembler* assembler)
       : assembler_(assembler),
-        old_constant_pool_available_(v8_flags.enable_embedded_constant_pool &&
+        old_constant_pool_available_(FLAG_enable_embedded_constant_pool &&
                                      assembler->is_constant_pool_available()) {
-    if (v8_flags.enable_embedded_constant_pool) {
+    if (FLAG_enable_embedded_constant_pool) {
       assembler->set_constant_pool_available(false);
     }
   }
   ~ConstantPoolUnavailableScope() {
-    if (v8_flags.enable_embedded_constant_pool) {
+    if (FLAG_enable_embedded_constant_pool) {
       assembler_->set_constant_pool_available(old_constant_pool_available_);
     }
   }

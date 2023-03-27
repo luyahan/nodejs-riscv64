@@ -62,7 +62,6 @@
 #include "src/execution/vm-state-inl.h"
 #include "src/handles/global-handles.h"
 #include "src/handles/persistent-handles.h"
-#include "src/handles/shared-object-conveyor-handles.h"
 #include "src/heap/embedder-tracing.h"
 #include "src/heap/heap-inl.h"
 #include "src/heap/heap-write-barrier.h"
@@ -1188,15 +1187,6 @@ void Template::SetAccessorProperty(v8::Local<v8::Name> name,
                                    v8::Local<FunctionTemplate> setter,
                                    v8::PropertyAttribute attribute,
                                    v8::AccessControl access_control) {
-  Utils::ApiCheck(
-      getter.IsEmpty() ||
-          !Utils::OpenHandle(*getter)->call_code(kAcquireLoad).IsUndefined(),
-      "v8::Template::SetAccessorProperty", "Getter must have a call handler");
-  Utils::ApiCheck(
-      setter.IsEmpty() ||
-          !Utils::OpenHandle(*setter)->call_code(kAcquireLoad).IsUndefined(),
-      "v8::Template::SetAccessorProperty", "Setter must have a call handler");
-
   // TODO(verwaest): Remove |access_control|.
   DCHECK_EQ(v8::DEFAULT, access_control);
   auto templ = Utils::OpenHandle(this);
@@ -1936,32 +1926,8 @@ void ObjectTemplate::SetCodeLike() {
 
 // --- S c r i p t s ---
 
-// Internally, UnboundScript and UnboundModuleScript are SharedFunctionInfos,
-// and Script is a JSFunction.
-
-namespace {
-inline Local<Value> GetSharedFunctionInfoSourceMappingURL(
-    i::Isolate* isolate, i::Handle<i::SharedFunctionInfo> obj) {
-  ENTER_V8_NO_SCRIPT_NO_EXCEPTION(isolate);
-  if (obj->script().IsScript()) {
-    i::Object url = i::Script::cast(obj->script()).source_mapping_url();
-    return Utils::ToLocal(i::Handle<i::Object>(url, isolate));
-  } else {
-    return Local<String>();
-  }
-}
-
-inline Local<Value> GetSharedFunctionInfoSourceURL(
-    i::Isolate* isolate, i::Handle<i::SharedFunctionInfo> obj) {
-  ENTER_V8_NO_SCRIPT_NO_EXCEPTION(isolate);
-  if (obj->script().IsScript()) {
-    i::Object url = i::Script::cast(obj->script()).source_url();
-    return Utils::ToLocal(i::Handle<i::Object>(url, isolate));
-  } else {
-    return Local<String>();
-  }
-}
-}  // namespace
+// Internally, UnboundScript is a SharedFunctionInfo, and Script is a
+// JSFunction.
 
 ScriptCompiler::CachedData::CachedData(const uint8_t* data_, int length_,
                                        BufferPolicy buffer_policy_)
@@ -2046,8 +2012,14 @@ Local<Value> UnboundScript::GetSourceURL() {
   i::Handle<i::SharedFunctionInfo> obj =
       i::Handle<i::SharedFunctionInfo>::cast(Utils::OpenHandle(this));
   i::Isolate* i_isolate = obj->GetIsolate();
+  ENTER_V8_NO_SCRIPT_NO_EXCEPTION(i_isolate);
   API_RCS_SCOPE(i_isolate, UnboundScript, GetSourceURL);
-  return GetSharedFunctionInfoSourceURL(i_isolate, obj);
+  if (obj->script().IsScript()) {
+    i::Object url = i::Script::cast(obj->script()).source_url();
+    return Utils::ToLocal(i::Handle<i::Object>(url, i_isolate));
+  } else {
+    return Local<String>();
+  }
 }
 
 Local<Value> UnboundScript::GetSourceMappingURL() {
@@ -2055,23 +2027,13 @@ Local<Value> UnboundScript::GetSourceMappingURL() {
       i::Handle<i::SharedFunctionInfo>::cast(Utils::OpenHandle(this));
   i::Isolate* i_isolate = obj->GetIsolate();
   API_RCS_SCOPE(i_isolate, UnboundScript, GetSourceMappingURL);
-  return GetSharedFunctionInfoSourceMappingURL(i_isolate, obj);
-}
-
-Local<Value> UnboundModuleScript::GetSourceURL() {
-  i::Handle<i::SharedFunctionInfo> obj =
-      i::Handle<i::SharedFunctionInfo>::cast(Utils::OpenHandle(this));
-  i::Isolate* i_isolate = obj->GetIsolate();
-  API_RCS_SCOPE(i_isolate, UnboundModuleScript, GetSourceURL);
-  return GetSharedFunctionInfoSourceURL(i_isolate, obj);
-}
-
-Local<Value> UnboundModuleScript::GetSourceMappingURL() {
-  i::Handle<i::SharedFunctionInfo> obj =
-      i::Handle<i::SharedFunctionInfo>::cast(Utils::OpenHandle(this));
-  i::Isolate* i_isolate = obj->GetIsolate();
-  API_RCS_SCOPE(i_isolate, UnboundModuleScript, GetSourceMappingURL);
-  return GetSharedFunctionInfoSourceMappingURL(i_isolate, obj);
+  ENTER_V8_NO_SCRIPT_NO_EXCEPTION(i_isolate);
+  if (obj->script().IsScript()) {
+    i::Object url = i::Script::cast(obj->script()).source_mapping_url();
+    return Utils::ToLocal(i::Handle<i::Object>(url, i_isolate));
+  } else {
+    return Local<String>();
+  }
 }
 
 MaybeLocal<Value> Script::Run(Local<Context> context) {
@@ -3368,21 +3330,6 @@ MaybeLocal<String> JSON::Stringify(Local<Context> context,
 
 // --- V a l u e   S e r i a l i z a t i o n ---
 
-SharedValueConveyor::SharedValueConveyor(SharedValueConveyor&& other) noexcept
-    : private_(std::move(other.private_)) {}
-
-SharedValueConveyor::~SharedValueConveyor() = default;
-
-SharedValueConveyor& SharedValueConveyor::operator=(
-    SharedValueConveyor&& other) noexcept {
-  private_ = std::move(other.private_);
-  return *this;
-}
-
-SharedValueConveyor::SharedValueConveyor(Isolate* v8_isolate)
-    : private_(std::make_unique<i::SharedObjectConveyorHandles>(
-          reinterpret_cast<i::Isolate*>(v8_isolate))) {}
-
 Maybe<bool> ValueSerializer::Delegate::WriteHostObject(Isolate* v8_isolate,
                                                        Local<Object> object) {
   i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(v8_isolate);
@@ -3406,14 +3353,7 @@ Maybe<uint32_t> ValueSerializer::Delegate::GetWasmModuleTransferId(
   return Nothing<uint32_t>();
 }
 
-bool ValueSerializer::Delegate::AdoptSharedValueConveyor(
-    Isolate* v8_isolate, SharedValueConveyor&& conveyor) {
-  i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(v8_isolate);
-  i_isolate->ScheduleThrow(*i_isolate->factory()->NewError(
-      i_isolate->error_function(), i::MessageTemplate::kDataCloneError,
-      i_isolate->factory()->NewStringFromAsciiChecked("shared value")));
-  return false;
-}
+bool ValueSerializer::Delegate::SupportsSharedValues() const { return false; }
 
 void* ValueSerializer::Delegate::ReallocateBufferMemory(void* old_buffer,
                                                         size_t size,
@@ -3504,6 +3444,8 @@ MaybeLocal<WasmModuleObject> ValueDeserializer::Delegate::GetWasmModuleFromId(
   return MaybeLocal<WasmModuleObject>();
 }
 
+bool ValueDeserializer::Delegate::SupportsSharedValues() const { return false; }
+
 MaybeLocal<SharedArrayBuffer>
 ValueDeserializer::Delegate::GetSharedArrayBufferFromId(Isolate* v8_isolate,
                                                         uint32_t id) {
@@ -3512,15 +3454,6 @@ ValueDeserializer::Delegate::GetSharedArrayBufferFromId(Isolate* v8_isolate,
       i_isolate->error_function(),
       i::MessageTemplate::kDataCloneDeserializationError));
   return MaybeLocal<SharedArrayBuffer>();
-}
-
-const SharedValueConveyor* ValueDeserializer::Delegate::GetSharedValueConveyor(
-    Isolate* v8_isolate) {
-  i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(v8_isolate);
-  i_isolate->ScheduleThrow(*i_isolate->factory()->NewError(
-      i_isolate->error_function(),
-      i::MessageTemplate::kDataCloneDeserializationError));
-  return nullptr;
 }
 
 struct ValueDeserializer::PrivateData {
@@ -4764,16 +4697,11 @@ MaybeLocal<String> v8::Object::ObjectProtoToString(Local<Context> context) {
 }
 
 Local<String> v8::Object::GetConstructorName() {
-  // TODO(v8:12547): Consider adding GetConstructorName(Local<Context>).
   auto self = Utils::OpenHandle(this);
-  i::Isolate* i_isolate;
-  if (self->InSharedWritableHeap()) {
-    i_isolate = i::Isolate::Current();
-  } else {
-    i_isolate = self->GetIsolate();
-  }
+  // TODO(v8:12547): Support shared objects.
+  DCHECK(!self->InSharedHeap());
   i::Handle<i::String> name =
-      i::JSReceiver::GetConstructorName(i_isolate, self);
+      i::JSReceiver::GetConstructorName(self->GetIsolate(), self);
   return Utils::ToLocal(name);
 }
 
@@ -5813,53 +5741,19 @@ int String::Write(Isolate* v8_isolate, uint16_t* buffer, int start, int length,
                      start, length, options);
 }
 
-namespace {
-
-bool HasExternalStringResource(i::String string) {
-  return i::StringShape(string).IsExternal() ||
-         string.HasExternalForwardingIndex(kAcquireLoad);
-}
-
-v8::String::ExternalStringResourceBase* GetExternalResourceFromForwardingTable(
-    i::String string, uint32_t raw_hash, bool* is_one_byte) {
-  DCHECK(i::String::IsExternalForwardingIndex(raw_hash));
-  const int index = i::String::ForwardingIndexValueBits::decode(raw_hash);
-  i::Isolate* isolate = i::GetIsolateFromWritableObject(string);
-  auto resource = isolate->string_forwarding_table()->GetExternalResource(
-      index, is_one_byte);
-  DCHECK_NOT_NULL(resource);
-  return resource;
-}
-
-}  // namespace
-
 bool v8::String::IsExternal() const {
   i::Handle<i::String> str = Utils::OpenHandle(this);
-  return HasExternalStringResource(*str);
+  return i::StringShape(*str).IsExternal();
 }
 
 bool v8::String::IsExternalTwoByte() const {
   i::Handle<i::String> str = Utils::OpenHandle(this);
-  if (i::StringShape(*str).IsExternalTwoByte()) return true;
-  uint32_t raw_hash_field = str->raw_hash_field(kAcquireLoad);
-  if (i::String::IsExternalForwardingIndex(raw_hash_field)) {
-    bool is_one_byte;
-    GetExternalResourceFromForwardingTable(*str, raw_hash_field, &is_one_byte);
-    return !is_one_byte;
-  }
-  return false;
+  return i::StringShape(*str).IsExternalTwoByte();
 }
 
 bool v8::String::IsExternalOneByte() const {
   i::Handle<i::String> str = Utils::OpenHandle(this);
-  if (i::StringShape(*str).IsExternalOneByte()) return true;
-  uint32_t raw_hash_field = str->raw_hash_field(kAcquireLoad);
-  if (i::String::IsExternalForwardingIndex(raw_hash_field)) {
-    bool is_one_byte;
-    GetExternalResourceFromForwardingTable(*str, raw_hash_field, &is_one_byte);
-    return is_one_byte;
-  }
-  return false;
+  return i::StringShape(*str).IsExternalOneByte();
 }
 
 void v8::String::VerifyExternalStringResource(
@@ -5876,17 +5770,7 @@ void v8::String::VerifyExternalStringResource(
     const void* resource = i::ExternalTwoByteString::cast(str).resource();
     expected = reinterpret_cast<const ExternalStringResource*>(resource);
   } else {
-    uint32_t raw_hash_field = str.raw_hash_field(kAcquireLoad);
-    if (i::String::IsExternalForwardingIndex(raw_hash_field)) {
-      bool is_one_byte;
-      auto resource = GetExternalResourceFromForwardingTable(
-          str, raw_hash_field, &is_one_byte);
-      if (!is_one_byte) {
-        expected = reinterpret_cast<const ExternalStringResource*>(resource);
-      }
-    } else {
-      expected = nullptr;
-    }
+    expected = nullptr;
   }
   CHECK_EQ(expected, value);
 }
@@ -5911,17 +5795,9 @@ void v8::String::VerifyExternalStringResourceBase(
     expected = reinterpret_cast<const ExternalStringResourceBase*>(resource);
     expectedEncoding = TWO_BYTE_ENCODING;
   } else {
-    uint32_t raw_hash_field = str.raw_hash_field(kAcquireLoad);
-    if (i::String::IsExternalForwardingIndex(raw_hash_field)) {
-      bool is_one_byte;
-      expected = GetExternalResourceFromForwardingTable(str, raw_hash_field,
-                                                        &is_one_byte);
-      expectedEncoding = is_one_byte ? ONE_BYTE_ENCODING : TWO_BYTE_ENCODING;
-    } else {
-      expected = nullptr;
-      expectedEncoding =
-          str.IsOneByteRepresentation() ? ONE_BYTE_ENCODING : TWO_BYTE_ENCODING;
-    }
+    expected = nullptr;
+    expectedEncoding =
+        str.IsOneByteRepresentation() ? ONE_BYTE_ENCODING : TWO_BYTE_ENCODING;
   }
   CHECK_EQ(expected, value);
   CHECK_EQ(expectedEncoding, encoding);
@@ -5941,16 +5817,6 @@ String::ExternalStringResource* String::GetExternalStringResourceSlow() const {
         i::Internals::ReadExternalPointerField<i::kExternalStringResourceTag>(
             isolate, str.ptr(), i::Internals::kStringResourceOffset);
     return reinterpret_cast<String::ExternalStringResource*>(value);
-  } else {
-    uint32_t raw_hash_field = str.raw_hash_field(kAcquireLoad);
-    if (i::String::IsExternalForwardingIndex(raw_hash_field)) {
-      bool is_one_byte;
-      auto resource = GetExternalResourceFromForwardingTable(
-          str, raw_hash_field, &is_one_byte);
-      if (!is_one_byte) {
-        return reinterpret_cast<ExternalStringResource*>(resource);
-      }
-    }
   }
   return nullptr;
 }
@@ -5995,15 +5861,6 @@ String::ExternalStringResourceBase* String::GetExternalStringResourceBaseSlow(
         i::Internals::ReadExternalPointerField<i::kExternalStringResourceTag>(
             isolate, string, i::Internals::kStringResourceOffset);
     resource = reinterpret_cast<ExternalStringResourceBase*>(value);
-  } else {
-    uint32_t raw_hash_field = str.raw_hash_field();
-    if (i::String::IsExternalForwardingIndex(raw_hash_field)) {
-      bool is_one_byte;
-      resource = GetExternalResourceFromForwardingTable(str, raw_hash_field,
-                                                        &is_one_byte);
-      *encoding_out = is_one_byte ? Encoding::ONE_BYTE_ENCODING
-                                  : Encoding::TWO_BYTE_ENCODING;
-    }
   }
   return resource;
 }
@@ -6018,15 +5875,6 @@ v8::String::GetExternalOneByteStringResource() const {
     str = i::ThinString::cast(str).actual();
     if (i::StringShape(str).IsExternalOneByte()) {
       return i::ExternalOneByteString::cast(str).resource();
-    }
-  }
-  uint32_t raw_hash_field = str.raw_hash_field(kAcquireLoad);
-  if (i::String::IsExternalForwardingIndex(raw_hash_field)) {
-    bool is_one_byte;
-    auto resource = GetExternalResourceFromForwardingTable(str, raw_hash_field,
-                                                           &is_one_byte);
-    if (is_one_byte) {
-      return reinterpret_cast<ExternalOneByteStringResource*>(resource);
     }
   }
   return nullptr;
@@ -6188,6 +6036,17 @@ bool v8::V8::Initialize(const int build_config) {
         "Embedder-vs-V8 build configuration mismatch. On embedder side "
         "Smi value size is %d while on V8 side it's %d.",
         kEmbedderSmiValueSize, internal::kSmiValueSize);
+  }
+
+  const bool kEmbedderSandboxedExternalPointers =
+      (build_config & kSandboxedExternalPointers) != 0;
+  if (kEmbedderSandboxedExternalPointers !=
+      V8_SANDBOXED_EXTERNAL_POINTERS_BOOL) {
+    FATAL(
+        "Embedder-vs-V8 build configuration mismatch. On embedder side "
+        "sandboxed external pointers is %s while on V8 side it's %s.",
+        kEmbedderSandboxedExternalPointers ? "ENABLED" : "DISABLED",
+        V8_SANDBOXED_EXTERNAL_POINTERS_BOOL ? "ENABLED" : "DISABLED");
   }
 
   const bool kEmbedderSandbox = (build_config & kSandbox) != 0;
@@ -7083,22 +6942,16 @@ bool v8::String::MakeExternal(v8::String::ExternalStringResource* resource) {
     return false;
   }
 
-  // TODO(v8:12007): Consider adding
-  // MakeExternal(Isolate*, ExternalStringResource*).
-  i::Isolate* i_isolate;
-  if (obj.IsShared()) {
-    i_isolate = i::Isolate::Current();
-  } else {
-    // It is safe to call GetIsolateFromWritableHeapObject because
-    // SupportsExternalization already checked that the object is writable.
-    i_isolate = i::GetIsolateFromWritableObject(obj);
-  }
+  // It is safe to call GetIsolateFromWritableHeapObject because
+  // SupportsExternalization already checked that the object is writable.
+  i::Isolate* i_isolate = i::GetIsolateFromWritableObject(obj);
   ENTER_V8_NO_SCRIPT_NO_EXCEPTION(i_isolate);
 
   CHECK(resource && resource->data());
 
   bool result = obj.MakeExternal(resource);
-  DCHECK_IMPLIES(result, HasExternalStringResource(obj));
+  DCHECK(result);
+  DCHECK(obj.IsExternalString());
   return result;
 }
 
@@ -7116,22 +6969,15 @@ bool v8::String::MakeExternal(
     return false;
   }
 
-  // TODO(v8:12007): Consider adding
-  // MakeExternal(Isolate*, ExternalOneByteStringResource*).
-  i::Isolate* i_isolate;
-  if (obj.IsShared()) {
-    i_isolate = i::Isolate::Current();
-  } else {
-    // It is safe to call GetIsolateFromWritableHeapObject because
-    // SupportsExternalization already checked that the object is writable.
-    i_isolate = i::GetIsolateFromWritableObject(obj);
-  }
+  // It is safe to call GetIsolateFromWritableHeapObject because
+  // SupportsExternalization already checked that the object is writable.
+  i::Isolate* i_isolate = i::GetIsolateFromWritableObject(obj);
   ENTER_V8_NO_SCRIPT_NO_EXCEPTION(i_isolate);
 
   CHECK(resource && resource->data());
 
   bool result = obj.MakeExternal(resource);
-  DCHECK_IMPLIES(result, HasExternalStringResource(obj));
+  DCHECK_IMPLIES(result, obj.IsExternalString());
   return result;
 }
 
@@ -7464,7 +7310,6 @@ REGEXP_FLAG_ASSERT_EQ(kSticky);
 REGEXP_FLAG_ASSERT_EQ(kUnicode);
 REGEXP_FLAG_ASSERT_EQ(kHasIndices);
 REGEXP_FLAG_ASSERT_EQ(kLinear);
-REGEXP_FLAG_ASSERT_EQ(kUnicodeSets);
 #undef REGEXP_FLAG_ASSERT_EQ
 
 v8::RegExp::Flags v8::RegExp::GetFlags() const {
@@ -8847,9 +8692,9 @@ void Isolate::Initialize(Isolate* v8_isolate,
   i_isolate->set_embedder_wrapper_object_index(
       params.embedder_wrapper_object_index);
 
-  if (!i_isolate->is_shared() && !i::V8::GetCurrentPlatform()
-                                      ->GetForegroundTaskRunner(v8_isolate)
-                                      ->NonNestableTasksEnabled()) {
+  if (!i::V8::GetCurrentPlatform()
+           ->GetForegroundTaskRunner(v8_isolate)
+           ->NonNestableTasksEnabled()) {
     FATAL(
         "The current platform's foreground task runner does not have "
         "non-nestable tasks enabled. The embedder must provide one.");

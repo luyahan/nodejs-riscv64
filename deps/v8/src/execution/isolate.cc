@@ -61,6 +61,7 @@
 #include "src/execution/vm-state-inl.h"
 #include "src/handles/global-handles-inl.h"
 #include "src/handles/persistent-handles.h"
+#include "src/handles/shared-object-conveyors.h"
 #include "src/heap/heap-inl.h"
 #include "src/heap/heap-verifier.h"
 #include "src/heap/local-heap.h"
@@ -154,7 +155,7 @@ namespace internal {
 #ifdef DEBUG
 #define TRACE_ISOLATE(tag)                                                  \
   do {                                                                      \
-    if (v8_flags.trace_isolates) {                                          \
+    if (FLAG_trace_isolates) {                                              \
       PrintF("Isolate %p (id %d)" #tag "\n", reinterpret_cast<void*>(this), \
              id());                                                         \
     }                                                                       \
@@ -314,7 +315,7 @@ void Isolate::SetEmbeddedBlob(const uint8_t* code, uint32_t code_size,
         "indicates that the embedded blob has been modified since compilation "
         "time.");
   }
-  if (v8_flags.text_is_readable) {
+  if (FLAG_text_is_readable) {
     if (d.EmbeddedBlobCodeHash() != d.CreateEmbeddedBlobCodeHash()) {
       FATAL(
           "Embedded blob code section checksum verification failed. This "
@@ -503,8 +504,6 @@ base::LazyMutex Isolate::process_wide_shared_isolate_mutex_ =
     LAZY_MUTEX_INITIALIZER;
 Isolate* Isolate::process_wide_shared_isolate_{nullptr};
 
-Isolate* Isolate::process_wide_shared_space_isolate_{nullptr};
-
 base::Thread::LocalStorageKey Isolate::isolate_key_;
 base::Thread::LocalStorageKey Isolate::per_isolate_thread_data_key_;
 std::atomic<bool> Isolate::isolate_key_created_{false};
@@ -522,7 +521,7 @@ Isolate::FindOrAllocatePerThreadDataForThisThread() {
     base::MutexGuard lock_guard(&thread_data_table_mutex_);
     per_thread = thread_data_table_.Lookup(thread_id);
     if (per_thread == nullptr) {
-      if (v8_flags.adjust_os_scheduling_parameters) {
+      if (FLAG_adjust_os_scheduling_parameters) {
         base::OS::AdjustSchedulingParams();
       }
       per_thread = new PerIsolateThreadData(this, thread_id);
@@ -620,7 +619,7 @@ void Isolate::Iterate(RootVisitor* v, ThreadLocalTop* thread) {
   // Iterate over pointers on native execution stack.
 #if V8_ENABLE_WEBASSEMBLY
   wasm::WasmCodeRefScope wasm_code_ref_scope;
-  if (v8_flags.experimental_wasm_stack_switching) {
+  if (FLAG_experimental_wasm_stack_switching) {
     wasm::StackMemory* current = wasm_stacks_;
     DCHECK_NOT_NULL(current);
     do {
@@ -786,7 +785,7 @@ class CallSiteBuilder {
                  (BytecodeArray::kHeaderSize - kHeapObjectTag);
 
     Handle<FixedArray> parameters = isolate_->factory()->empty_fixed_array();
-    if (V8_UNLIKELY(v8_flags.detailed_error_stack_trace)) {
+    if (V8_UNLIKELY(FLAG_detailed_error_stack_trace)) {
       parameters = isolate_->factory()->CopyFixedArrayUpTo(
           handle(generator_object->parameters_and_registers(), isolate_),
           function->shared()
@@ -902,7 +901,7 @@ class CallSiteBuilder {
   bool IsNotHidden(Handle<JSFunction> function) {
     // TODO(szuend): Remove this check once the flag is enabled
     //               by default.
-    if (!v8_flags.experimental_stack_trace_frames &&
+    if (!FLAG_experimental_stack_trace_frames &&
         function->shared().IsApiFunction()) {
       return false;
     }
@@ -910,7 +909,7 @@ class CallSiteBuilder {
     // exposed, in which case the native flag is set.
     // The --builtins-in-stack-traces command line flag allows including
     // internal call sites in the stack trace for debugging purposes.
-    if (!v8_flags.builtins_in_stack_traces &&
+    if (!FLAG_builtins_in_stack_traces &&
         !function->shared().IsUserJavaScript()) {
       return function->shared().native() || function->shared().IsApiFunction();
     }
@@ -941,7 +940,7 @@ class CallSiteBuilder {
 };
 
 bool GetStackTraceLimit(Isolate* isolate, int* result) {
-  if (v8_flags.correctness_fuzzer_suppressions) return false;
+  if (FLAG_correctness_fuzzer_suppressions) return false;
   Handle<JSObject> error = isolate->error_function();
 
   Handle<String> key = isolate->factory()->stackTraceLimit_string();
@@ -952,7 +951,7 @@ bool GetStackTraceLimit(Isolate* isolate, int* result) {
   // Ensure that limit is not negative.
   *result = std::max(FastD2IChecked(stack_trace_limit->Number()), 0);
 
-  if (*result != v8_flags.stack_trace_limit) {
+  if (*result != FLAG_stack_trace_limit) {
     isolate->CountUsage(v8::Isolate::kErrorStackTraceLimit);
   }
 
@@ -1212,7 +1211,7 @@ Handle<FixedArray> CaptureSimpleStackTrace(Isolate* isolate, int limit,
   // If --async-stack-traces are enabled and the "current microtask" is a
   // PromiseReactionJobTask, we try to enrich the stack trace with async
   // frames.
-  if (v8_flags.async_stack_traces) {
+  if (FLAG_async_stack_traces) {
     CaptureAsyncStackTrace(isolate, &builder);
   }
 
@@ -1593,7 +1592,7 @@ Object Isolate::StackOverflow() {
   DCHECK_GE(GetCurrentStackPosition(), stack_guard()->real_climit() - 8 * KB);
 #endif
 
-  if (v8_flags.correctness_fuzzer_suppressions) {
+  if (FLAG_correctness_fuzzer_suppressions) {
     FATAL("Aborting on stack overflow");
   }
 
@@ -1616,7 +1615,7 @@ Object Isolate::StackOverflow() {
   Throw(*exception);
 
 #ifdef VERIFY_HEAP
-  if (v8_flags.verify_heap && v8_flags.stress_compaction) {
+  if (FLAG_verify_heap && FLAG_stress_compaction) {
     heap()->CollectAllGarbage(Heap::kNoGCFlags,
                               GarbageCollectionReason::kTesting);
   }
@@ -1757,14 +1756,14 @@ Handle<JSMessageObject> Isolate::CreateMessageOrAbort(
   // embedder didn't specify a custom uncaught exception callback,
   // or if the custom callback determined that V8 should abort, then
   // abort.
-  if (v8_flags.abort_on_uncaught_exception) {
+  if (FLAG_abort_on_uncaught_exception) {
     CatchType prediction = PredictExceptionCatcher();
     if ((prediction == NOT_CAUGHT || prediction == CAUGHT_BY_EXTERNAL) &&
         (!abort_on_uncaught_exception_callback_ ||
          abort_on_uncaught_exception_callback_(
              reinterpret_cast<v8::Isolate*>(this)))) {
       // Prevent endless recursion.
-      v8_flags.abort_on_uncaught_exception = false;
+      FLAG_abort_on_uncaught_exception = false;
       // This flag is intended for use by JavaScript developers, so
       // print a user-friendly stack trace (not an internal one).
       PrintF(stderr, "%s\n\nFROM\n",
@@ -1787,7 +1786,7 @@ Object Isolate::ThrowInternal(Object raw_exception, MessageLocation* location) {
   HandleScope scope(this);
   Handle<Object> exception(raw_exception, this);
 
-  if (v8_flags.print_all_exceptions) {
+  if (FLAG_print_all_exceptions) {
     PrintF("=========================================================\n");
     PrintF("Exception thrown:\n");
     if (location) {
@@ -1954,7 +1953,7 @@ Object Isolate::UnwindAndFindHandler() {
 #if V8_ENABLE_WEBASSEMBLY
   // Iterate the chain of stack segments for wasm stack switching.
   WasmContinuationObject current_stack;
-  if (v8_flags.experimental_wasm_stack_switching) {
+  if (FLAG_experimental_wasm_stack_switching) {
     current_stack =
         WasmContinuationObject::cast(root(RootIndex::kActiveContinuation));
   }
@@ -1964,21 +1963,18 @@ Object Isolate::UnwindAndFindHandler() {
   // over the stack and dispatching according to the frame type.
   for (StackFrameIterator iter(this);; iter.Advance(), visited_frames++) {
 #if V8_ENABLE_WEBASSEMBLY
-    if (v8_flags.experimental_wasm_stack_switching && iter.done()) {
+    if (FLAG_experimental_wasm_stack_switching && iter.done()) {
       // We reached the end of the current stack segment. Follow the linked-list
       // of stacks to find the next frame, and perform the implicit stack
       // switch.
       auto stack = Managed<wasm::StackMemory>::cast(current_stack.stack());
       // Mark this stack as empty.
-      DCHECK_EQ(stack.get()->jmpbuf()->state, wasm::JumpBuffer::Active);
-      stack.get()->jmpbuf()->state = wasm::JumpBuffer::Retired;
+      stack.get()->jmpbuf()->sp = 0x0;
       HeapObject parent = current_stack.parent();
       DCHECK(!parent.IsUndefined());
       current_stack = WasmContinuationObject::cast(parent);
       wasm::StackMemory* parent_stack =
           Managed<wasm::StackMemory>::cast(current_stack.stack()).get().get();
-      DCHECK_EQ(parent_stack->jmpbuf()->state, wasm::JumpBuffer::Inactive);
-      parent_stack->jmpbuf()->state = wasm::JumpBuffer::Active;
       iter.Reset(thread_local_top(), parent_stack);
 
       // Update the continuation and suspender state.
@@ -1995,7 +1991,7 @@ Object Isolate::UnwindAndFindHandler() {
         DCHECK_EQ(current_stack, parent_suspender.continuation());
       }
       roots_table().slot(RootIndex::kActiveSuspender).store(suspender.parent());
-      if (v8_flags.trace_wasm_stack_switching) {
+      if (FLAG_trace_wasm_stack_switching) {
         PrintF("Switch to stack #%d (unwind)\n", parent_stack->id());
       }
       uintptr_t limit =
@@ -2118,7 +2114,7 @@ Object Isolate::UnwindAndFindHandler() {
       case StackFrame::WASM_COMPILE_LAZY: {
         // Can only fail directly on invocation. This happens if an invalid
         // function was validated lazily.
-        DCHECK(v8_flags.wasm_lazy_validation);
+        DCHECK(FLAG_wasm_lazy_validation);
         break;
       }
 #endif  // V8_ENABLE_WEBASSEMBLY
@@ -2288,7 +2284,7 @@ Object Isolate::UnwindAndFindHandler() {
 namespace {
 HandlerTable::CatchPrediction PredictException(JavaScriptFrame* frame) {
   HandlerTable::CatchPrediction prediction;
-  if (frame->is_optimized()) {
+  if (frame->is_turbofan()) {
     if (frame->LookupExceptionHandlerInTable(nullptr, nullptr) > 0) {
       // This optimized frame will catch. It's handler table does not include
       // exception prediction, and we need to use the corresponding handler
@@ -2368,7 +2364,6 @@ Isolate::CatchType Isolate::PredictExceptionCatcher() {
       case StackFrame::INTERPRETED:
       case StackFrame::BASELINE:
       case StackFrame::TURBOFAN:
-      case StackFrame::MAGLEV:
       case StackFrame::BUILTIN: {
         JavaScriptFrame* js_frame = JavaScriptFrame::cast(frame);
         Isolate::CatchType prediction = ToCatchType(PredictException(js_frame));
@@ -2406,7 +2401,7 @@ Isolate::CatchType Isolate::PredictExceptionCatcher() {
 }
 
 Object Isolate::ThrowIllegalOperation() {
-  if (v8_flags.stack_trace_on_illegal) PrintStack(stdout);
+  if (FLAG_stack_trace_on_illegal) PrintStack(stdout);
   return Throw(ReadOnlyRoots(heap()).illegal_access_string());
 }
 
@@ -2947,9 +2942,9 @@ void Isolate::InstallConditionalFeatures(Handle<Context> context) {
 }
 
 bool Isolate::IsSharedArrayBufferConstructorEnabled(Handle<Context> context) {
-  if (!v8_flags.harmony_sharedarraybuffer) return false;
+  if (!FLAG_harmony_sharedarraybuffer) return false;
 
-  if (!v8_flags.enable_sharedarraybuffer_per_context) return true;
+  if (!FLAG_enable_sharedarraybuffer_per_context) return true;
 
   if (sharedarraybuffer_constructor_enabled_callback()) {
     v8::Local<v8::Context> api_context = v8::Utils::ToLocal(context);
@@ -2964,7 +2959,7 @@ bool Isolate::IsWasmSimdEnabled(Handle<Context> context) {
     v8::Local<v8::Context> api_context = v8::Utils::ToLocal(context);
     return wasm_simd_enabled_callback()(api_context);
   }
-  return v8_flags.experimental_wasm_simd;
+  return FLAG_experimental_wasm_simd;
 #else
   return false;
 #endif  // V8_ENABLE_WEBASSEMBLY
@@ -2976,7 +2971,7 @@ bool Isolate::AreWasmExceptionsEnabled(Handle<Context> context) {
     v8::Local<v8::Context> api_context = v8::Utils::ToLocal(context);
     return wasm_exceptions_enabled_callback()(api_context);
   }
-  return v8_flags.experimental_wasm_eh;
+  return FLAG_experimental_wasm_eh;
 #else
   return false;
 #endif  // V8_ENABLE_WEBASSEMBLY
@@ -3135,7 +3130,7 @@ class TracingAccountingAllocator : public AccountingAllocator {
   void TraceZoneDestructionImpl(const Zone* zone) override {
     base::MutexGuard lock(&mutex_);
 #ifdef V8_ENABLE_PRECISE_ZONE_STATS
-    if (v8_flags.trace_zone_type_stats) {
+    if (FLAG_trace_zone_type_stats) {
       type_stats_.MergeWith(zone->type_stats());
     }
 #endif
@@ -3144,7 +3139,7 @@ class TracingAccountingAllocator : public AccountingAllocator {
     nesting_depth_--;
 
 #ifdef V8_ENABLE_PRECISE_ZONE_STATS
-    if (v8_flags.trace_zone_type_stats && active_zones_.empty()) {
+    if (FLAG_trace_zone_type_stats && active_zones_.empty()) {
       type_stats_.Dump();
     }
 #endif
@@ -3152,17 +3147,16 @@ class TracingAccountingAllocator : public AccountingAllocator {
 
  private:
   void UpdateMemoryTrafficAndReportMemoryUsage(size_t memory_traffic_delta) {
-    if (!v8_flags.trace_zone_stats &&
+    if (!FLAG_trace_zone_stats &&
         !(TracingFlags::zone_stats.load(std::memory_order_relaxed) &
           v8::tracing::TracingCategoryObserver::ENABLED_BY_TRACING)) {
       // Don't print anything if the zone tracing was enabled only because of
-      // v8_flags.trace_zone_type_stats.
+      // FLAG_trace_zone_type_stats.
       return;
     }
 
     memory_traffic_since_last_report_ += memory_traffic_delta;
-    if (memory_traffic_since_last_report_ < v8_flags.zone_stats_tolerance)
-      return;
+    if (memory_traffic_since_last_report_ < FLAG_zone_stats_tolerance) return;
     memory_traffic_since_last_report_ = 0;
 
     Dump(buffer_, true);
@@ -3170,7 +3164,7 @@ class TracingAccountingAllocator : public AccountingAllocator {
     {
       std::string trace_str = buffer_.str();
 
-      if (v8_flags.trace_zone_stats) {
+      if (FLAG_trace_zone_stats) {
         PrintF(
             "{"
             "\"type\": \"v8-zone-trace\", "
@@ -3257,7 +3251,7 @@ std::atomic<size_t> Isolate::non_disposed_isolates_;
 
 namespace {
 bool HasFlagThatRequiresSharedHeap() {
-  return v8_flags.shared_string_table || v8_flags.harmony_struct;
+  return i::FLAG_shared_string_table || i::FLAG_harmony_struct;
 }
 }  // namespace
 
@@ -3283,9 +3277,9 @@ Isolate* Isolate::GetProcessWideSharedIsolate(bool* created_shared_isolate) {
     // configurable and tailored for the shared heap.
     v8::Isolate::CreateParams params;
     size_t initial_shared_heap_size =
-        static_cast<size_t>(v8_flags.initial_shared_heap_size) * MB;
+        static_cast<size_t>(FLAG_initial_shared_heap_size) * MB;
     size_t max_shared_heap_size =
-        static_cast<size_t>(v8_flags.max_shared_heap_size) * MB;
+        static_cast<size_t>(FLAG_max_shared_heap_size) * MB;
     if (initial_shared_heap_size != 0 && max_shared_heap_size != 0) {
       params.constraints.ConfigureDefaultsFromHeapSize(initial_shared_heap_size,
                                                        max_shared_heap_size);
@@ -3317,7 +3311,7 @@ void Isolate::DeleteProcessWideSharedIsolate() {
 // static
 Isolate* Isolate::New() {
   Isolate* isolate = Allocate(false);
-  if (HasFlagThatRequiresSharedHeap() && !v8_flags.shared_space) {
+  if (HasFlagThatRequiresSharedHeap()) {
     // The Isolate that creates the shared Isolate, which is usually the main
     // thread Isolate, owns the lifetime of shared heap.
     bool created;
@@ -3427,14 +3421,16 @@ Isolate::Isolate(std::unique_ptr<i::IsolateAllocator> isolate_allocator,
 #endif
       rail_mode_(PERFORMANCE_ANIMATION),
       logger_(new Logger()),
-      detailed_source_positions_for_profiling_(v8_flags.detailed_line_info),
+      detailed_source_positions_for_profiling_(FLAG_detailed_line_info),
       persistent_handles_list_(new PersistentHandlesList()),
-      jitless_(v8_flags.jitless),
+      jitless_(FLAG_jitless),
 #if V8_SFI_HAS_UNIQUE_ID
       next_unique_sfi_id_(0),
 #endif
       next_module_async_evaluating_ordinal_(
           SourceTextModule::kFirstAsyncEvaluatingOrdinal),
+      shared_object_conveyors_(is_shared ? new SharedObjectConveyors(this)
+                                         : nullptr),
       cancelable_task_manager_(new CancelableTaskManager()) {
   TRACE_ISOLATE(constructor);
   CheckIsolateLayout();
@@ -3463,12 +3459,20 @@ Isolate::Isolate(std::unique_ptr<i::IsolateAllocator> isolate_allocator,
   InitializeDefaultEmbeddedBlob();
 
   MicrotaskQueue::SetUpDefaultMicrotaskQueue(this);
+
+  if (is_shared_) {
+    global_safepoint_ = std::make_unique<GlobalSafepoint>(this);
+  }
 }
 
 void Isolate::CheckIsolateLayout() {
 #ifdef V8_ENABLE_SANDBOX
   CHECK_EQ(static_cast<int>(OFFSET_OF(ExternalPointerTable, buffer_)),
            Internals::kExternalPointerTableBufferOffset);
+  CHECK_EQ(static_cast<int>(OFFSET_OF(ExternalPointerTable, capacity_)),
+           Internals::kExternalPointerTableCapacityOffset);
+  CHECK_EQ(static_cast<int>(OFFSET_OF(ExternalPointerTable, freelist_head_)),
+           Internals::kExternalPointerTableFreelistHeadOffset);
   CHECK_EQ(static_cast<int>(sizeof(ExternalPointerTable)),
            Internals::kExternalPointerTableSize);
   CHECK_EQ(static_cast<int>(sizeof(ExternalPointerTable)),
@@ -3524,7 +3528,7 @@ void Isolate::ClearSerializerData() {
 // When profiling status changes, call this function to update the single bool
 // cache.
 void Isolate::UpdateLogObjectRelocation() {
-  log_object_relocation_ = v8_flags.verify_predictable ||
+  log_object_relocation_ = FLAG_verify_predictable ||
                            v8_file_logger()->is_logging() || is_profiling() ||
                            v8_file_logger()->is_listening_to_code_events() ||
                            (heap_profiler() != nullptr &&
@@ -3537,7 +3541,7 @@ void Isolate::Deinit() {
   DisallowHeapAllocation no_allocation;
 
   tracing_cpu_profiler_.reset();
-  if (v8_flags.stress_sampling_allocation_profiler > 0) {
+  if (FLAG_stress_sampling_allocation_profiler > 0) {
     heap_profiler()->StopSamplingHeapProfiler();
   }
 
@@ -3559,7 +3563,7 @@ void Isolate::Deinit() {
   debug()->Unload();
 
 #if V8_ENABLE_WEBASSEMBLY
-  if (!is_shared()) wasm::GetWasmEngine()->DeleteCompileJobsOnIsolate(this);
+  wasm::GetWasmEngine()->DeleteCompileJobsOnIsolate(this);
 
   BackingStore::RemoveSharedWasmMemoryObjects(this);
 #endif  // V8_ENABLE_WEBASSEMBLY
@@ -3571,11 +3575,9 @@ void Isolate::Deinit() {
   }
 
   // All client isolates should already be detached.
-  if (is_shared() || is_shared_space_isolate()) {
-    global_safepoint()->AssertNoClientsOnTearDown();
-  }
+  if (is_shared()) global_safepoint()->AssertNoClientsOnTearDown();
 
-  if (v8_flags.print_deopt_stress) {
+  if (FLAG_print_deopt_stress) {
     PrintF(stdout, "=== Stress deopt counter: %u\n", stress_deopt_count_);
   }
 
@@ -3590,6 +3592,7 @@ void Isolate::Deinit() {
   // not cause a GC.
   heap_.StartTearDown();
 
+  // This stops cancelable tasks (i.e. concurrent marking tasks).
   // Stop concurrent tasks before destroying resources since they might still
   // use those.
   {
@@ -3620,7 +3623,6 @@ void Isolate::Deinit() {
     // client isolate before it can actually detach from the shared isolate.
     AllowGarbageCollection allow_shared_gc;
     DetachFromSharedIsolate();
-    DetachFromSharedSpaceIsolate();
   }
 
   // Since there are no other threads left, we can lock this mutex without any
@@ -3662,13 +3664,13 @@ void Isolate::Deinit() {
   if (logfile != nullptr) base::Fclose(logfile);
 
 #if defined(V8_OS_WIN) && defined(V8_ENABLE_ETW_STACK_WALKING)
-  if (v8_flags.enable_etw_stack_walking) {
+  if (i::FLAG_enable_etw_stack_walking) {
     ETWJITInterface::RemoveIsolate(this);
   }
 #endif  // defined(V8_OS_WIN)
 
 #if V8_ENABLE_WEBASSEMBLY
-  if (!is_shared()) wasm::GetWasmEngine()->RemoveIsolate(this);
+  wasm::GetWasmEngine()->RemoveIsolate(this);
 #endif  // V8_ENABLE_WEBASSEMBLY
 
   TearDownEmbeddedBlob();
@@ -3692,10 +3694,6 @@ void Isolate::Deinit() {
   SetCodePages(nullptr);
 
   ClearSerializerData();
-
-  if (OwnsStringTables()) {
-    string_forwarding_table()->TearDown();
-  }
 
 #ifdef V8_COMPRESS_POINTERS
   external_pointer_table().TearDown();
@@ -4121,28 +4119,13 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   DCHECK_EQ(create_heap_objects, startup_snapshot_data == nullptr);
   DCHECK_EQ(create_heap_objects, shared_heap_snapshot_data == nullptr);
 
-  // Code space setup requires the permissions to be set to default state.
-  RwxMemoryWriteScope::SetDefaultPermissionsForNewThread();
   base::ElapsedTimer timer;
-  if (create_heap_objects && v8_flags.profile_deserialization) timer.Start();
+  if (create_heap_objects && FLAG_profile_deserialization) timer.Start();
 
   time_millis_at_init_ = heap_.MonotonicallyIncreasingTimeInMs();
 
-  Isolate* attach_to_shared_space_isolate = nullptr;
-
-  if (HasFlagThatRequiresSharedHeap() && v8_flags.shared_space) {
-    if (process_wide_shared_space_isolate_) {
-      attach_to_shared_space_isolate = process_wide_shared_space_isolate_;
-    } else {
-      process_wide_shared_space_isolate_ = this;
-      is_shared_space_isolate_ = true;
-    }
-  }
-
-  CHECK_IMPLIES(is_shared_space_isolate_, V8_CAN_CREATE_SHARED_HEAP_BOOL);
-
-  stress_deopt_count_ = v8_flags.deopt_every_n_times;
-  force_slow_path_ = v8_flags.force_slow_path;
+  stress_deopt_count_ = FLAG_deopt_every_n_times;
+  force_slow_path_ = FLAG_force_slow_path;
 
   has_fatal_error_ = false;
 
@@ -4174,13 +4157,9 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   interpreter_ = new interpreter::Interpreter(this);
   bigint_processor_ = bigint::Processor::New(new BigIntPlatform(this));
 
-  if (is_shared_ || is_shared_space_isolate_) {
-    global_safepoint_ = std::make_unique<GlobalSafepoint>(this);
-  }
-
-  if (v8_flags.lazy_compile_dispatcher) {
+  if (FLAG_lazy_compile_dispatcher) {
     lazy_compile_dispatcher_ = std::make_unique<LazyCompileDispatcher>(
-        this, V8::GetCurrentPlatform(), v8_flags.stack_size);
+        this, V8::GetCurrentPlatform(), FLAG_stack_size);
   }
   baseline_batch_compiler_ = new baseline::BaselineBatchCompiler(this);
 #ifdef V8_ENABLE_MAGLEV
@@ -4227,7 +4206,6 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   // isolate. Otherwise a global safepoint would find an isolate without
   // LocalHeaps and not wait until this thread is ready for a GC.
   AttachToSharedIsolate();
-  AttachToSharedSpaceIsolate(attach_to_shared_space_isolate);
 
   // SetUp the object heap.
   DCHECK(!heap_.HasBeenSetUp());
@@ -4246,7 +4224,7 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
     string_forwarding_table_ = shared_isolate()->string_forwarding_table_;
   }
 
-  if (V8_SHORT_BUILTIN_CALLS_BOOL && v8_flags.short_builtin_calls) {
+  if (V8_SHORT_BUILTIN_CALLS_BOOL && FLAG_short_builtin_calls) {
 #if defined(V8_OS_ANDROID)
     // On Android, the check is not operative to detect memory, and re-embedded
     // builtins don't have a memory cost.
@@ -4297,11 +4275,11 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
 #endif  // V8_COMPRESS_POINTERS
 
 #if V8_ENABLE_WEBASSEMBLY
-  if (!is_shared()) wasm::GetWasmEngine()->AddIsolate(this);
+  wasm::GetWasmEngine()->AddIsolate(this);
 #endif  // V8_ENABLE_WEBASSEMBLY
 
 #if defined(V8_OS_WIN) && defined(V8_ENABLE_ETW_STACK_WALKING)
-  if (v8_flags.enable_etw_stack_walking) {
+  if (i::FLAG_enable_etw_stack_walking) {
     ETWJITInterface::AddIsolate(this);
   }
 #endif  // defined(V8_OS_WIN)
@@ -4310,7 +4288,7 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
     setup_delegate_ = new SetupIsolateDelegate(create_heap_objects);
   }
 
-  if (!v8_flags.inline_new) heap_.DisableInlineAllocation();
+  if (!FLAG_inline_new) heap_.DisableInlineAllocation();
 
   if (!setup_delegate_->SetupHeap(&heap_)) {
     V8::FatalProcessOutOfMemory(this, "heap object creation");
@@ -4349,12 +4327,11 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   // embedded blob setup).
   init_memcopy_functions();
 
-  if (v8_flags.log_internal_timer_events) {
+  if (FLAG_log_internal_timer_events) {
     set_event_logger(V8FileLogger::DefaultEventLoggerSentinel);
   }
 
-  if (v8_flags.trace_turbo || v8_flags.trace_turbo_graph ||
-      v8_flags.turbo_profiling) {
+  if (FLAG_trace_turbo || FLAG_trace_turbo_graph || FLAG_turbo_profiling) {
     PrintF("Concurrent recompilation has been disabled for tracing.\n");
   } else if (OptimizingCompileDispatcher::Enabled()) {
     optimizing_compile_dispatcher_ = new OptimizingCompileDispatcher(this);
@@ -4386,7 +4363,7 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   }
 
 #ifdef VERIFY_HEAP
-  if (v8_flags.verify_heap) {
+  if (FLAG_verify_heap) {
     HeapVerifier::VerifyReadOnlyHeap(&heap_);
   }
 #endif
@@ -4413,8 +4390,8 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   }
 #endif  // DEBUG
 
-  if (v8_flags.print_builtin_code) builtins()->PrintBuiltinCode();
-  if (v8_flags.print_builtin_size) builtins()->PrintBuiltinSize();
+  if (FLAG_print_builtin_code) builtins()->PrintBuiltinCode();
+  if (FLAG_print_builtin_size) builtins()->PrintBuiltinSize();
 
   // Finish initialization of ThreadLocal after deserialization is done.
   clear_pending_exception();
@@ -4425,7 +4402,7 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   if (!create_heap_objects)
     Assembler::QuietNaN(ReadOnlyRoots(this).nan_value());
 
-  if (v8_flags.trace_turbo) {
+  if (FLAG_trace_turbo) {
     // Create an empty file.
     std::ofstream(GetTurboCfgFileName(this).c_str(), std::ios_base::trunc);
   }
@@ -4437,8 +4414,8 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
 
   initialized_from_snapshot_ = !create_heap_objects;
 
-  if (v8_flags.stress_sampling_allocation_profiler > 0) {
-    uint64_t sample_interval = v8_flags.stress_sampling_allocation_profiler;
+  if (FLAG_stress_sampling_allocation_profiler > 0) {
+    uint64_t sample_interval = FLAG_stress_sampling_allocation_profiler;
     int stack_depth = 128;
     v8::HeapProfiler::SamplingFlags sampling_flags =
         v8::HeapProfiler::SamplingFlags::kSamplingForceGC;
@@ -4456,23 +4433,23 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
   }
 #endif  // V8_OS_WIN64
 
-  if (create_heap_objects && v8_flags.profile_deserialization) {
+  if (create_heap_objects && FLAG_profile_deserialization) {
     double ms = timer.Elapsed().InMillisecondsF();
     PrintF("[Initializing isolate from scratch took %0.3f ms]\n", ms);
   }
 
 #ifdef V8_ENABLE_WEBASSEMBLY
-  if (v8_flags.experimental_wasm_stack_switching) {
+  if (FLAG_experimental_wasm_stack_switching) {
     std::unique_ptr<wasm::StackMemory> stack(
         wasm::StackMemory::GetCurrentStackView(this));
     this->wasm_stacks() = stack.get();
-    if (v8_flags.trace_wasm_stack_switching) {
+    if (FLAG_trace_wasm_stack_switching) {
       PrintF("Set up native stack object (limit: %p, base: %p)\n",
              stack->jslimit(), reinterpret_cast<void*>(stack->base()));
     }
     HandleScope scope(this);
     Handle<WasmContinuationObject> continuation = WasmContinuationObject::New(
-        this, std::move(stack), wasm::JumpBuffer::Active, AllocationType::kOld);
+        this, std::move(stack), AllocationType::kOld);
     heap()
         ->roots_table()
         .slot(RootIndex::kActiveContinuation)
@@ -4511,7 +4488,6 @@ void Isolate::Enter() {
     }
   }
 
-  RwxMemoryWriteScope::SetDefaultPermissionsForNewThread();
   PerIsolateThreadData* data = FindOrAllocatePerThreadDataForThisThread();
   DCHECK_NOT_NULL(data);
   DCHECK(data->isolate_ == this);
@@ -4555,7 +4531,7 @@ std::unique_ptr<PersistentHandles> Isolate::NewPersistentHandles() {
 }
 
 void Isolate::DumpAndResetStats() {
-  if (v8_flags.trace_turbo_stack_accesses) {
+  if (FLAG_trace_turbo_stack_accesses) {
     StdoutStream os;
     uint64_t total_loads = 0;
     uint64_t total_stores = 0;
@@ -4581,13 +4557,13 @@ void Isolate::DumpAndResetStats() {
     }
   }
   if (turbo_statistics_ != nullptr) {
-    DCHECK(v8_flags.turbo_stats || v8_flags.turbo_stats_nvp);
+    DCHECK(FLAG_turbo_stats || FLAG_turbo_stats_nvp);
     StdoutStream os;
-    if (v8_flags.turbo_stats) {
+    if (FLAG_turbo_stats) {
       AsPrintableStatistics ps = {*turbo_statistics_, false};
       os << ps << std::endl;
     }
-    if (v8_flags.turbo_stats_nvp) {
+    if (FLAG_turbo_stats_nvp) {
       AsPrintableStatistics ps = {*turbo_statistics_, true};
       os << ps << std::endl;
     }
@@ -4596,7 +4572,7 @@ void Isolate::DumpAndResetStats() {
 #if V8_ENABLE_WEBASSEMBLY
   // TODO(7424): There is no public API for the {WasmEngine} yet. So for now we
   // just dump and reset the engines statistics together with the Isolate.
-  if (v8_flags.turbo_stats_wasm) {
+  if (FLAG_turbo_stats_wasm) {
     wasm::GetWasmEngine()->DumpAndResetTurboStatistics();
   }
 #endif  // V8_ENABLE_WEBASSEMBLY
@@ -4610,12 +4586,8 @@ void Isolate::DumpAndResetStats() {
   }
 #endif  // V8_RUNTIME_CALL_STATS
   if (BasicBlockProfiler::Get()->HasData(this)) {
-    if (v8_flags.turbo_profiling_output) {
-      FILE* f = std::fopen(v8_flags.turbo_profiling_output, "w");
-      if (f == nullptr) {
-        FATAL("Unable to open file \"%s\" for writing.\n",
-              v8_flags.turbo_profiling_output.value());
-      }
+    if (FLAG_turbo_profiling_output) {
+      auto f = std::fopen(FLAG_turbo_profiling_output, "a");
       OFStream pgo_stream(f);
       BasicBlockProfiler::Get()->Log(this, pgo_stream);
     } else {
@@ -4626,7 +4598,7 @@ void Isolate::DumpAndResetStats() {
   } else {
     // Only log builtins PGO data if v8 was built with
     // v8_enable_builtins_profiling=true
-    CHECK_NULL(v8_flags.turbo_profiling_output);
+    CHECK_NULL(FLAG_turbo_profiling_output);
   }
 }
 
@@ -4651,7 +4623,7 @@ CodeTracer* Isolate::GetCodeTracer() {
 
 bool Isolate::use_optimizer() {
   // TODO(v8:7700): Update this predicate for a world with multiple tiers.
-  return (v8_flags.turbofan || v8_flags.maglev) && !serializer_enabled_ &&
+  return (FLAG_turbofan || FLAG_maglev) && !serializer_enabled_ &&
          CpuFeatures::SupportsOptimizer() && !is_precise_count_code_coverage();
 }
 
@@ -4669,9 +4641,8 @@ bool Isolate::NeedsDetailedOptimizedCodeLineInfo() const {
 bool Isolate::NeedsSourcePositionsForProfiling() const {
   return
       // Static conditions.
-      v8_flags.trace_deopt || v8_flags.trace_turbo ||
-      v8_flags.trace_turbo_graph || v8_flags.turbo_profiling ||
-      v8_flags.perf_prof || v8_flags.log_maps || v8_flags.log_ic ||
+      FLAG_trace_deopt || FLAG_trace_turbo || FLAG_trace_turbo_graph ||
+      FLAG_turbo_profiling || FLAG_perf_prof || FLAG_log_maps || FLAG_log_ic ||
       // Dynamic conditions; changing any of these conditions triggers source
       // position collection for the entire heap
       // (CollectSourcePositionsForAllBytecodeArrays).
@@ -4792,12 +4763,12 @@ static base::RandomNumberGenerator* ensure_rng_exists(
 base::RandomNumberGenerator* Isolate::random_number_generator() {
   // TODO(bmeurer) Initialized lazily because it depends on flags; can
   // be fixed once the default isolate cleanup is done.
-  return ensure_rng_exists(&random_number_generator_, v8_flags.random_seed);
+  return ensure_rng_exists(&random_number_generator_, FLAG_random_seed);
 }
 
 base::RandomNumberGenerator* Isolate::fuzzer_rng() {
   if (fuzzer_rng_ == nullptr) {
-    int64_t seed = v8_flags.fuzzer_random_seed;
+    int64_t seed = FLAG_fuzzer_random_seed;
     if (seed == 0) {
       seed = random_number_generator()->initial_seed();
     }
@@ -5028,7 +4999,7 @@ MaybeHandle<FixedArray> Isolate::GetImportAssertionsFromArgument(
 
   // The parser shouldn't have allowed the second argument to import() if
   // the flag wasn't enabled.
-  DCHECK(v8_flags.harmony_import_assertions);
+  DCHECK(FLAG_harmony_import_assertions);
 
   if (!import_assertions_argument->IsJSReceiver()) {
     this->Throw(
@@ -5460,7 +5431,7 @@ int Isolate::GetNextScriptId() { return heap()->NextScriptId(); }
 
 // static
 std::string Isolate::GetTurboCfgFileName(Isolate* isolate) {
-  if (const char* filename = v8_flags.trace_turbo_cfg_file) return filename;
+  if (const char* filename = FLAG_trace_turbo_cfg_file) return filename;
   std::ostringstream os;
   os << "turbo-" << base::OS::GetCurrentProcessId() << "-";
   if (isolate != nullptr) {
@@ -5506,7 +5477,7 @@ void Isolate::CheckDetachedContextsAfterGC() {
     ++new_length;
   }
 
-  if (v8_flags.trace_detached_contexts) {
+  if (FLAG_trace_detached_contexts) {
     PrintF("%d detached contexts are collected out of %d\n",
            length - new_length, length);
     for (int i = 0; i < new_length; i += 2) {
@@ -5533,7 +5504,7 @@ void Isolate::DetachGlobal(Handle<Context> env) {
   JSObject::ForceSetPrototype(this, global_proxy, factory()->null_value());
   global_proxy->map().set_constructor_or_back_pointer(roots.null_value(),
                                                       kRelaxedStore);
-  if (v8_flags.track_detached_contexts) AddDetachedContext(env);
+  if (FLAG_track_detached_contexts) AddDetachedContext(env);
   DCHECK(global_proxy->IsDetached());
 
   env->native_context().set_microtask_queue(this, nullptr);
@@ -5559,7 +5530,7 @@ void Isolate::SetRAILMode(RAILMode rail_mode) {
   if (old_rail_mode == PERFORMANCE_LOAD && rail_mode != PERFORMANCE_LOAD) {
     heap()->incremental_marking()->incremental_marking_job()->ScheduleTask();
   }
-  if (v8_flags.trace_rail) {
+  if (FLAG_trace_rail) {
     PrintIsolate(this, "RAIL mode: %s\n", RAILModeName(rail_mode));
   }
 }
@@ -5954,23 +5925,6 @@ void Isolate::DetachFromSharedIsolate() {
 #if DEBUG
   attached_to_shared_isolate_ = false;
 #endif  // DEBUG
-}
-
-void Isolate::AttachToSharedSpaceIsolate(Isolate* shared_space_isolate) {
-  DCHECK(!shared_space_isolate_.has_value());
-  shared_space_isolate_ = shared_space_isolate;
-  if (shared_space_isolate) {
-    shared_space_isolate->global_safepoint()->AppendClient(this);
-  }
-}
-
-void Isolate::DetachFromSharedSpaceIsolate() {
-  DCHECK(shared_space_isolate_.has_value());
-  Isolate* shared_space_isolate = shared_space_isolate_.value();
-  if (shared_space_isolate) {
-    shared_space_isolate->global_safepoint()->RemoveClient(this);
-  }
-  shared_space_isolate_.reset();
 }
 
 #ifdef V8_COMPRESS_POINTERS

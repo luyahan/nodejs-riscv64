@@ -4,7 +4,6 @@
 # found in the LICENSE file.
 
 import heapq
-import logging
 import os
 import platform
 import signal
@@ -30,11 +29,10 @@ def list_processes_linux():
     ]
     # Filter strange process with name as out dir.
     return [p for p in processes if p[1] != OUT_DIR]
-  except subprocess.CalledProcessError as e:
-    # Return code 1 means no processes found.
-    if e.returncode != 1:
-      # TODO(https://crbug.com/v8/13101): Remove after investigation.
-      logging.exception('Fetching process list failed.')
+  except Exception as e:
+    # TODO(https://crbug.com/v8/13101): Remove after investigation.
+    print('Fetching process list failed.')
+    print(e)
     return []
 
 
@@ -47,10 +45,10 @@ def kill_processes_linux():
     return
   for pid, cmd in list_processes_linux():
     try:
-      logging.warning('Attempting to kill %d - %s', pid, cmd)
+      print('Attempting to kill %d - %s' % (pid, cmd))
       os.kill(pid, signal.SIGKILL)
     except:
-      logging.exception('Failed to kill process')
+      pass
 
 
 class FixedSizeTopList():

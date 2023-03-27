@@ -651,7 +651,7 @@ class WasmGenerator {
         builder_->EmitByte(0);  // Table index.
       } else {
         GenerateRef(HeapType(sig_index), data);
-        builder_->EmitWithU32V(kExprReturnCallRef, sig_index);
+        builder_->Emit(kExprReturnCallRef);
       }
       return;
     } else {
@@ -666,7 +666,7 @@ class WasmGenerator {
         builder_->EmitByte(0);  // Table index.
       } else {
         GenerateRef(HeapType(sig_index), data);
-        builder_->EmitWithU32V(kExprCallRef, sig_index);
+        builder_->Emit(kExprCallRef);
       }
     }
     if (sig->return_count() == 0 && wanted_kind != kWasmVoid) {
@@ -1051,6 +1051,7 @@ class WasmGenerator {
       DCHECK(builder_->builder()->IsArrayType(array_index));
       GenerateRef(HeapType(array_index), data);
       builder_->EmitWithPrefix(kExprArrayLen);
+      builder_->EmitU32V(array_index);
     } else {
       Generate(kWasmI32, data);
     }

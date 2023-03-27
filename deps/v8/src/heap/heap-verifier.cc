@@ -68,7 +68,6 @@ class HeapVerification final {
 
 void HeapVerification::Verify() {
   CHECK(heap()->HasBeenSetUp());
-  AllowGarbageCollection allow_gc;
   IgnoreLocalGCRequests ignore_gc_requests(heap());
   SafepointScope safepoint_scope(heap());
   HandleScope scope(isolate());
@@ -81,14 +80,9 @@ void HeapVerification::Verify() {
   heap()->IterateRoots(&visitor, {});
 
   if (!isolate()->context().is_null() &&
-      !isolate()->raw_native_context().is_null()) {
-    Object normalized_map_cache =
-        isolate()->raw_native_context().normalized_map_cache();
-
-    if (normalized_map_cache.IsNormalizedMapCache()) {
-      NormalizedMapCache::cast(normalized_map_cache)
-          .NormalizedMapCacheVerify(isolate());
-    }
+      !isolate()->normalized_map_cache()->IsUndefined(isolate())) {
+    NormalizedMapCache::cast(*isolate()->normalized_map_cache())
+        .NormalizedMapCacheVerify(isolate());
   }
 
   // The heap verifier can't deal with partially deserialized objects, so
@@ -241,7 +235,7 @@ class OldToNewSlotVerifyingVisitor : public SlotVerifyingVisitor {
   void VisitEphemeron(HeapObject host, int index, ObjectSlot key,
                       ObjectSlot target) override {
     VisitPointer(host, target);
-    if (v8_flags.minor_mc) return;
+    if (FLAG_minor_mc) return;
     // Keys are handled separately and should never appear in this set.
     CHECK(!InUntypedSet(key));
     Object k = *key;
@@ -418,7 +412,7 @@ void HeapVerifier::VerifyObjectLayoutChange(Heap* heap, HeapObject object,
   // Object layout changes are currently not supported on background threads.
   DCHECK_NULL(LocalHeap::Current());
 
-  if (!v8_flags.verify_heap) return;
+  if (!FLAG_verify_heap) return;
 
   PtrComprCageBase cage_base(heap->isolate());
 
@@ -455,7 +449,7 @@ void HeapVerifier::VerifySafeMapTransition(Heap* heap, HeapObject object,
     return;
   }
 
-  if (v8_flags.shared_string_table && object.IsString(cage_base) &&
+  if (FLAG_shared_string_table && object.IsString(cage_base) &&
       InstanceTypeChecker::IsInternalizedString(new_map.instance_type())) {
     // In-place internalization does not change a string's fields.
     //

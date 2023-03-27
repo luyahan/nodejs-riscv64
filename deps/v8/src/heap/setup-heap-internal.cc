@@ -75,8 +75,11 @@ bool SetupIsolateDelegate::SetupHeapInternal(Heap* heap) {
 bool Heap::CreateHeapObjects() {
   // Create initial maps.
   if (!CreateInitialMaps()) return false;
-  if (v8_flags.minor_mc && new_space()) {
-    paged_new_space()->paged_space()->free_list()->RepairLists(this);
+  if (FLAG_minor_mc && new_space()) {
+    PagedNewSpace::From(new_space())
+        ->paged_space()
+        ->free_list()
+        ->RepairLists(this);
   }
   CreateApiObjects();
 
@@ -176,8 +179,7 @@ AllocationResult Heap::AllocatePartialMap(InstanceType instance_type,
   map.set_visitor_id(Map::GetVisitorId(map));
   map.set_inobject_properties_start_or_constructor_function_index(0);
   DCHECK(!map.IsJSObjectMap());
-  map.set_prototype_validity_cell(Smi::FromInt(Map::kPrototypeChainValid),
-                                  kRelaxedStore);
+  map.set_prototype_validity_cell(Smi::FromInt(Map::kPrototypeChainValid));
   map.SetInObjectUnusedPropertyFields(0);
   map.set_bit_field(0);
   map.set_bit_field2(0);

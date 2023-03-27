@@ -188,8 +188,7 @@ TEST_F(PageTest, NormalPageCreationDestruction) {
   const PageBackend* backend = Heap::From(GetHeap())->page_backend();
   auto* space = static_cast<NormalPageSpace*>(
       heap.Space(RawHeap::RegularSpaceType::kNormal1));
-  auto* page = NormalPage::TryCreate(GetPageBackend(), *space);
-  EXPECT_NE(nullptr, page);
+  auto* page = NormalPage::Create(GetPageBackend(), *space);
   EXPECT_NE(nullptr, backend->Lookup(page->PayloadStart()));
 
   space->AddPage(page);
@@ -214,8 +213,7 @@ TEST_F(PageTest, LargePageCreationDestruction) {
   const PageBackend* backend = Heap::From(GetHeap())->page_backend();
   auto* space = static_cast<LargePageSpace*>(
       heap.Space(RawHeap::RegularSpaceType::kLarge));
-  auto* page = LargePage::TryCreate(GetPageBackend(), *space, kObjectSize);
-  EXPECT_NE(nullptr, page);
+  auto* page = LargePage::Create(GetPageBackend(), *space, kObjectSize);
   EXPECT_NE(nullptr, backend->Lookup(page->PayloadStart()));
 
   space->AddPage(page);
@@ -233,17 +231,15 @@ TEST_F(PageTest, UnsweptPageDestruction) {
   {
     auto* space = static_cast<NormalPageSpace*>(
         heap.Space(RawHeap::RegularSpaceType::kNormal1));
-    auto* page = NormalPage::TryCreate(GetPageBackend(), *space);
-    EXPECT_NE(nullptr, page);
+    auto* page = NormalPage::Create(GetPageBackend(), *space);
     space->AddPage(page);
     EXPECT_DEATH_IF_SUPPORTED(NormalPage::Destroy(page), "");
   }
   {
     auto* space = static_cast<LargePageSpace*>(
         heap.Space(RawHeap::RegularSpaceType::kLarge));
-    auto* page = LargePage::TryCreate(GetPageBackend(), *space,
-                                      2 * kLargeObjectSizeThreshold);
-    EXPECT_NE(nullptr, page);
+    auto* page = LargePage::Create(GetPageBackend(), *space,
+                                   2 * kLargeObjectSizeThreshold);
     space->AddPage(page);
     EXPECT_DEATH_IF_SUPPORTED(LargePage::Destroy(page), "");
     // Detach page and really destroy page in the parent process so that sweeper

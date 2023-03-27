@@ -15,7 +15,6 @@ namespace v8 {
 namespace internal {
 
 RwxMemoryWriteScope::RwxMemoryWriteScope(const char* comment) {
-  DCHECK(is_key_permissions_initialized_for_current_thread());
   if (!FLAG_jitless) {
     SetWritable();
   }

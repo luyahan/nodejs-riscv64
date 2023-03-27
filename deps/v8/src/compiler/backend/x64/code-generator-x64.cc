@@ -3651,12 +3651,6 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
                   i.InputSimd128Register(1));
       break;
     }
-    case kX64I16x8DotI8x16I7x16S: {
-      __ I16x8DotI8x16I7x16S(i.OutputSimd128Register(),
-                             i.InputSimd128Register(0),
-                             i.InputSimd128Register(1));
-      break;
-    }
     case kX64I8x16Splat: {
       XMMRegister dst = i.OutputSimd128Register();
       if (HasRegisterInput(instr, 0)) {
@@ -5211,17 +5205,7 @@ void CodeGenerator::AssembleMove(InstructionOperand* source,
   switch (MoveType::InferMove(source, destination)) {
     case MoveType::kRegisterToRegister:
       if (source->IsRegister()) {
-        MachineRepresentation src_rep =
-            LocationOperand::cast(source)->representation();
-        MachineRepresentation dest_rep =
-            LocationOperand::cast(destination)->representation();
-        if (dest_rep == MachineRepresentation::kWord32 &&
-            src_rep == MachineRepresentation::kWord32) {
-          DCHECK(destination->IsRegister());
-          __ movl(g.ToRegister(destination), g.ToRegister(source));
-        } else {
-          __ movq(g.ToRegister(destination), g.ToRegister(source));
-        }
+        __ movq(g.ToRegister(destination), g.ToRegister(source));
       } else {
         DCHECK(source->IsFPRegister());
         __ Movapd(g.ToDoubleRegister(destination), g.ToDoubleRegister(source));

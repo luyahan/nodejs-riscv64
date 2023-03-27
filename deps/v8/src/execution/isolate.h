@@ -134,6 +134,7 @@ class ReadOnlyArtifacts;
 class RegExpStack;
 class RootVisitor;
 class SetupIsolateDelegate;
+class SharedObjectConveyors;
 class Simulator;
 class SnapshotData;
 class StringForwardingTable;
@@ -1527,7 +1528,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   bool concurrent_recompilation_enabled() {
     // Thread is only available with flag enabled.
     DCHECK(optimizing_compile_dispatcher_ == nullptr ||
-           v8_flags.concurrent_recompilation);
+           FLAG_concurrent_recompilation);
     return optimizing_compile_dispatcher_ != nullptr;
   }
 
@@ -1987,11 +1988,6 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
     return shared_isolate_;
   }
 
-  bool is_shared_space_isolate() const { return is_shared_space_isolate_; }
-  Isolate* shared_space_isolate() const {
-    return shared_space_isolate_.value();
-  }
-
   void set_shared_isolate(Isolate* shared_isolate) {
     DCHECK(shared_isolate->is_shared());
     DCHECK_NULL(shared_isolate_);
@@ -2004,13 +2000,16 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
 
   bool owns_shareable_data() { return owns_shareable_data_; }
 
+  SharedObjectConveyors* GetSharedObjectConveyors() const {
+    if (is_shared()) return shared_object_conveyors_.get();
+    return shared_isolate()->shared_object_conveyors_.get();
+  }
+
   bool log_object_relocation() const { return log_object_relocation_; }
 
   // TODO(pthier): Unify with owns_shareable_data() once the flag
   // --shared-string-table is removed.
-  bool OwnsStringTables() {
-    return !v8_flags.shared_string_table || is_shared();
-  }
+  bool OwnsStringTables() { return !FLAG_shared_string_table || is_shared(); }
 
 #if USE_SIMULATOR
   SimulatorData* simulator_data() { return simulator_data_; }
@@ -2094,8 +2093,6 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   static Isolate* GetProcessWideSharedIsolate(bool* created_shared_isolate);
   static void DeleteProcessWideSharedIsolate();
 
-  static Isolate* process_wide_shared_space_isolate_;
-
   static base::Thread::LocalStorageKey per_isolate_thread_data_key_;
   static base::Thread::LocalStorageKey isolate_key_;
   static std::atomic<bool> isolate_key_created_;
@@ -2148,9 +2145,6 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   void AttachToSharedIsolate();
   void DetachFromSharedIsolate();
 
-  void AttachToSharedSpaceIsolate(Isolate* shared_space_isolate);
-  void DetachFromSharedSpaceIsolate();
-
   // This class contains a collection of data accessible from both C++ runtime
   // and compiled code (including assembly stubs, builtins, interpreter bytecode
   // handlers and optimized code).
@@ -2159,9 +2153,6 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   // Set to true if this isolate is used as shared heap. This field must be set
   // before Heap is constructed, as Heap's constructor consults it.
   const bool is_shared_;
-
-  // Set to true if this isolate is used as main isolate with a shared space.
-  bool is_shared_space_isolate_{false};
 
   std::unique_ptr<IsolateAllocator> isolate_allocator_;
   Heap heap_;
@@ -2398,11 +2389,17 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
 
   std::vector<Object> startup_object_cache_;
 
-  // When sharing data among Isolates (e.g. v8_flags.shared_string_table), only
-  // the shared Isolate populates this and client Isolates reference that copy.
+  // When sharing data among Isolates (e.g. FLAG_shared_string_table), only the
+  // shared Isolate populates this and client Isolates reference that copy.
   //
   // Otherwise this is populated for all Isolates.
   std::vector<Object> shared_heap_object_cache_;
+
+  // When sharing data among isolates, an isolate can send and receive shared
+  // objects with the ValueSerializer and ValueDeserializer. Shared objects that
+  // are in transit use PersistentHandles owned by this data structure to keep
+  // them alive.
+  std::unique_ptr<SharedObjectConveyors> shared_object_conveyors_;
 
   // Used during builtins compilation to build the builtins constants table,
   // which is stored on the root list prior to serialization.
@@ -2469,9 +2466,6 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   //
   // When non-null, it is identical to process_wide_shared_isolate_.
   Isolate* shared_isolate_ = nullptr;
-
-  // Stores the isolate containing the shared space.
-  base::Optional<Isolate*> shared_space_isolate_;
 
 #ifdef V8_COMPRESS_POINTERS
   // The external pointer handle to the Isolate's main thread's WaiterQueueNode.

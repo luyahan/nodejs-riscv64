@@ -30,10 +30,13 @@
 #include "src/wasm/wasm-objects-inl.h"
 
 #ifdef V8_ENABLE_WASM_GDB_REMOTE_DEBUGGING
+#include "src/base/platform/wrappers.h"
 #include "src/debug/wasm/gdb-server/gdb-server.h"
 #endif  // V8_ENABLE_WASM_GDB_REMOTE_DEBUGGING
 
-namespace v8::internal::wasm {
+namespace v8 {
+namespace internal {
+namespace wasm {
 
 #define TRACE_CODE_GC(...)                                             \
   do {                                                                 \
@@ -174,12 +177,6 @@ class WeakScriptHandle {
   // TODO(chromium:1132260): Revisit this for huge URLs.
   std::shared_ptr<const char> source_url_;
 };
-
-// If PGO data is being collected, keep all native modules alive, so repeated
-// runs of a benchmark (with different configuration) all use the same module.
-// This vector is protected by the global WasmEngine's mutex, but not defined in
-// the header because it's a private implementation detail.
-std::vector<std::shared_ptr<NativeModule>>* native_modules_kept_alive_for_pgo;
 
 }  // namespace
 
@@ -442,12 +439,6 @@ WasmEngine::~WasmEngine() {
   gdb_server_.reset();
 #endif  // V8_ENABLE_WASM_GDB_REMOTE_DEBUGGING
 
-  // Free all modules that were kept alive for collecting PGO. This is to avoid
-  // memory leaks.
-  if (V8_UNLIKELY(native_modules_kept_alive_for_pgo)) {
-    delete native_modules_kept_alive_for_pgo;
-  }
-
   operations_barrier_->CancelAndWait();
 
   // All AsyncCompileJobs have been canceled.
@@ -539,30 +530,21 @@ MaybeHandle<WasmModuleObject> WasmEngine::SyncCompile(
   TRACE_EVENT1("v8.wasm", "wasm.SyncCompile", "id", compilation_id);
   v8::metrics::Recorder::ContextId context_id =
       isolate->GetOrRegisterRecorderContextId(isolate->native_context());
-  std::shared_ptr<WasmModule> module;
-  {
-    ModuleResult result = DecodeWasmModule(
-        enabled, bytes.start(), bytes.end(), false, kWasmOrigin,
-        isolate->counters(), isolate->metrics_recorder(), context_id,
-        DecodingMethod::kSync, allocator());
-    if (result.failed()) {
-      thrower->CompileFailed(result.error());
-      return {};
-    }
-    module = std::move(result).value();
-  }
-
-  // If experimental PGO via files is enabled, load profile information now.
-  if (V8_UNLIKELY(FLAG_experimental_wasm_pgo_from_file)) {
-    LoadProfileFromFile(module.get(), bytes.module_bytes());
+  ModuleResult result =
+      DecodeWasmModule(enabled, bytes.start(), bytes.end(), false, kWasmOrigin,
+                       isolate->counters(), isolate->metrics_recorder(),
+                       context_id, DecodingMethod::kSync, allocator());
+  if (result.failed()) {
+    thrower->CompileFailed(result.error());
+    return {};
   }
 
   // Transfer ownership of the WasmModule to the {Managed<WasmModule>} generated
   // in {CompileToNativeModule}.
   Handle<FixedArray> export_wrappers;
-  std::shared_ptr<NativeModule> native_module =
-      CompileToNativeModule(isolate, enabled, thrower, std::move(module), bytes,
-                            &export_wrappers, compilation_id, context_id);
+  std::shared_ptr<NativeModule> native_module = CompileToNativeModule(
+      isolate, enabled, thrower, std::move(result).value(), bytes,
+      &export_wrappers, compilation_id, context_id);
   if (!native_module) return {};
 
 #ifdef DEBUG
@@ -1024,6 +1006,12 @@ void WasmEngine::AddIsolate(Isolate* isolate) {
   DCHECK_EQ(0, isolates_.count(isolate));
   isolates_.emplace(isolate, std::make_unique<IsolateInfo>(isolate));
 
+  // The isolate might access existing (cached) code without ever compiling any.
+  // In that case, the current thread might still have the default permissions
+  // for the memory protection key (== no access). Thus initialize the
+  // permissions now.
+  WasmCodeManager::InitializeMemoryProtectionKeyPermissionsIfSupported();
+
   // Install sampling GC callback.
   // TODO(v8:7424): For now we sample module sizes in a GC callback. This will
   // bias samples towards apps with high memory pressure. We should switch to
@@ -1168,13 +1156,6 @@ std::shared_ptr<NativeModule> WasmEngine::NewNativeModule(
       GetWasmCodeManager()->NewNativeModule(
           isolate, enabled, code_size_estimate, std::move(module));
   base::MutexGuard lock(&mutex_);
-  if (V8_UNLIKELY(v8_flags.experimental_wasm_pgo_to_file)) {
-    if (!native_modules_kept_alive_for_pgo) {
-      native_modules_kept_alive_for_pgo =
-          new std::vector<std::shared_ptr<NativeModule>>;
-    }
-    native_modules_kept_alive_for_pgo->emplace_back(native_module);
-  }
   auto pair = native_modules_.insert(std::make_pair(
       native_module.get(), std::make_unique<NativeModuleInfo>(native_module)));
   DCHECK(pair.second);  // inserted new entry.
@@ -1687,4 +1668,6 @@ size_t max_module_size() {
 
 #undef TRACE_CODE_GC
 
-}  // namespace v8::internal::wasm
+}  // namespace wasm
+}  // namespace internal
+}  // namespace v8

@@ -238,7 +238,7 @@ InstructionBase::Type InstructionBase::InstructionType() const {
     return kUnsupported;
   }
   // RV64C Instruction
-  if (v8_flags.riscv_c_extension && IsShortInstruction()) {
+  if (FLAG_riscv_c_extension && IsShortInstruction()) {
     switch (InstructionBits() & kRvcOpcodeMask) {
       case RO_C_ADDI4SPN:
         return kCIWType;

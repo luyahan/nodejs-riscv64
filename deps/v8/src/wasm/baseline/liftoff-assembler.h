@@ -658,7 +658,6 @@ class LiftoffAssembler : public TurboAssembler {
   void Spill(VarState* slot);
   void SpillLocals();
   void SpillAllRegisters();
-  inline void LoadSpillAddress(Register dst, int offset, ValueKind kind);
 
   // Clear any uses of {reg} in both the cache and in {possible_uses}.
   // Any use in the stack is spilled. If any register in {possible_uses} matches
@@ -1869,6 +1868,8 @@ bool CheckCompatibleStackSlotTypes(ValueKind a, ValueKind b);
 #include "src/wasm/baseline/arm/liftoff-assembler-arm.h"
 #elif V8_TARGET_ARCH_PPC || V8_TARGET_ARCH_PPC64
 #include "src/wasm/baseline/ppc/liftoff-assembler-ppc.h"
+#elif V8_TARGET_ARCH_MIPS
+#include "src/wasm/baseline/mips/liftoff-assembler-mips.h"
 #elif V8_TARGET_ARCH_MIPS64
 #include "src/wasm/baseline/mips64/liftoff-assembler-mips64.h"
 #elif V8_TARGET_ARCH_LOONG64

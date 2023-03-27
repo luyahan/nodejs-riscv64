@@ -5,7 +5,6 @@
 #ifndef V8_HEAP_SCAVENGE_JOB_H_
 #define V8_HEAP_SCAVENGE_JOB_H_
 
-#include "src/common/globals.h"
 #include "src/tasks/cancelable-task.h"
 
 namespace v8 {
@@ -18,17 +17,16 @@ class Isolate;
 // Scavenge garbage collection. The job posts a foreground task.
 class ScavengeJob {
  public:
-  static constexpr size_t kStepSize = 64 * KB;
-
   ScavengeJob() V8_NOEXCEPT = default;
 
   void ScheduleTaskIfNeeded(Heap* heap);
+
+  static size_t YoungGenerationTaskTriggerSize(Heap* heap);
 
  private:
   class Task;
 
   static bool YoungGenerationSizeTaskTriggerReached(Heap* heap);
-  static size_t YoungGenerationTaskTriggerSize(Heap* heap);
 
   void set_task_pending(bool value) { task_pending_ = value; }
 

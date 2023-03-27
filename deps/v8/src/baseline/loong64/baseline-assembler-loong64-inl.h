@@ -144,7 +144,7 @@ void BaselineAssembler::JumpIfInstanceType(Condition cc, Register map,
                                            Label* target, Label::Distance) {
   ScratchRegisterScope temps(this);
   Register type = temps.AcquireScratch();
-  if (v8_flags.debug_code) {
+  if (FLAG_debug_code) {
     __ AssertNotSmi(map);
     __ GetObjectType(map, type, type);
     __ Assert(eq, AbortReason::kUnexpectedValue, type, Operand(MAP_TYPE));
@@ -535,7 +535,7 @@ void BaselineAssembler::EmitReturn(MacroAssembler* masm) {
     __ LoadContext(kContextRegister);
     __ LoadFunction(kJSFunctionRegister);
     __ masm()->Push(kJSFunctionRegister);
-    __ CallRuntime(Runtime::kBytecodeBudgetInterrupt_Sparkplug, 1);
+    __ CallRuntime(Runtime::kBytecodeBudgetInterrupt, 1);
 
     __ masm()->Pop(params_size, kInterpreterAccumulatorRegister);
     __ masm()->SmiUntag(params_size);
@@ -569,7 +569,7 @@ void BaselineAssembler::EmitReturn(MacroAssembler* masm) {
 
 inline void EnsureAccumulatorPreservedScope::AssertEqualToAccumulator(
     Register reg) {
-  assembler_->masm()->Assert(eq, AbortReason::kAccumulatorClobbered, reg,
+  assembler_->masm()->Assert(eq, AbortReason::kUnexpectedValue, reg,
                              Operand(kInterpreterAccumulatorRegister));
 }
 

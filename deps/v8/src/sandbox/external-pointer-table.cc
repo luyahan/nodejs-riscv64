@@ -48,6 +48,17 @@ void ExternalPointerTable::Init(Isolate* isolate) {
         isolate, "Failed to allocate mutex for ExternalPointerTable");
   }
 
+#if defined(LEAK_SANITIZER)
+  // Make the shadow table accessible.
+  if (!root_space->SetPagePermissions(
+          buffer_ + kExternalPointerTableReservationSize,
+          kExternalPointerTableReservationSize, PagePermissions::kReadWrite)) {
+    V8::FatalProcessOutOfMemory(isolate,
+                                "Failed to allocate memory for the "
+                                "ExternalPointerTable LSan shadow table");
+  }
+#endif  // LEAK_SANITIZER
+
   // Allocate the initial block. Mutex must be held for that.
   base::MutexGuard guard(mutex_);
   Grow(isolate);
@@ -55,7 +66,7 @@ void ExternalPointerTable::Init(Isolate* isolate) {
   // Set up the special null entry. This entry must contain nullptr so that
   // empty EmbedderDataSlots represent nullptr.
   static_assert(kNullExternalPointerHandle == 0);
-  Store(0, Entry::MakeNullEntry());
+  store(kNullExternalPointerHandle, kNullAddress);
 }
 
 void ExternalPointerTable::TearDown() {
@@ -71,16 +82,16 @@ void ExternalPointerTable::TearDown() {
 
   buffer_ = kNullAddress;
   capacity_ = 0;
-  freelist_ = 0;
+  freelist_head_ = 0;
   mutex_ = nullptr;
 }
 
 uint32_t ExternalPointerTable::SweepAndCompact(Isolate* isolate) {
   // There must not be any entry allocations while the table is being swept as
-  // that would not be safe. Set the freelist to this special marker value to
-  // better catch any violation of this requirement.
-  Freelist old_freelist = Relaxed_GetFreelist();
-  base::Release_Store(&freelist_, kTableIsCurrentlySweepingMarker);
+  // that would not be safe. Set the freelist head to this special marker value
+  // to better catch any violation of this requirement.
+  uint32_t old_freelist_head = base::Relaxed_Load(&freelist_head_);
+  base::Release_Store(&freelist_head_, kTableIsCurrentlySweepingMarker);
 
   // Keep track of the last block (identified by the index of its first entry)
   // that has live entries. Used to decommit empty blocks at the end.
@@ -101,14 +112,14 @@ uint32_t ExternalPointerTable::SweepAndCompact(Isolate* isolate) {
       // Extract the original start_of_evacuation_area value so that the
       // DCHECKs below work correctly.
       first_block_of_evacuation_area &= ~kCompactionAbortedMarker;
-    } else if (old_freelist.IsEmpty() ||
-               old_freelist.Head() > first_block_of_evacuation_area) {
+    } else if (!old_freelist_head ||
+               old_freelist_head > first_block_of_evacuation_area) {
       // In this case, marking finished successfully, but the application
       // afterwards allocated entries inside the area that is being compacted.
       // In this case, we can still compute how many blocks at the end of the
       // table are now empty.
-      if (!old_freelist.IsEmpty()) {
-        last_in_use_block = RoundDown(old_freelist.Head(), kEntriesPerBlock);
+      if (old_freelist_head) {
+        last_in_use_block = RoundDown(old_freelist_head, kEntriesPerBlock);
       }
       outcome = TableCompactionOutcome::kPartialSuccess;
     } else {
@@ -134,25 +145,24 @@ uint32_t ExternalPointerTable::SweepAndCompact(Isolate* isolate) {
 
   // Skip the special null entry. This also guarantees that the first block
   // will never be decommitted.
-  // The null entry may have been marked as alive (if any live object was
-  // referencing it), which is fine, the entry will just keep the bit set.
   DCHECK_GE(capacity(), 1);
   uint32_t table_end = last_in_use_block + kEntriesPerBlock;
   DCHECK(IsAligned(table_end, kEntriesPerBlock));
   for (uint32_t i = table_end - 1; i > 0; i--) {
     // No other threads are active during sweep, so there is no need to use
     // atomic operations here.
-    Entry entry = Load(i);
-    if (entry.IsEvacuationEntry()) {
+    Address entry = load(i);
+    if (is_evacuation_entry(entry)) {
       // Resolve the evacuation entry: take the pointer to the handle from the
       // evacuation entry, copy the entry to its new location, and finally
       // update the handle to point to the new entry.
+      Address evacuation_entry = load(i);
       ExternalPointerHandle* handle_location =
           reinterpret_cast<ExternalPointerHandle*>(
-              entry.ExtractHandleLocation());
+              extract_handle_location_from_evacuation_entry(evacuation_entry));
 
       ExternalPointerHandle old_handle = *handle_location;
-      ExternalPointerHandle new_handle = IndexToHandle(i);
+      ExternalPointerHandle new_handle = index_to_handle(i);
 
       // For the compaction algorithm to work optimally, double initialization
       // of entries is forbidden, see below. This DCHECK can detect double
@@ -168,12 +178,11 @@ uint32_t ExternalPointerTable::SweepAndCompact(Isolate* isolate) {
       // external pointer slot is re-initialized, in which case the old_handle
       // may now also point before the evacuation area. For that reason,
       // re-initialization of external pointer slots is forbidden.
-      DCHECK_GE(HandleToIndex(old_handle), first_block_of_evacuation_area);
-      DCHECK_LT(HandleToIndex(new_handle), first_block_of_evacuation_area);
+      DCHECK_GE(handle_to_index(old_handle), first_block_of_evacuation_area);
+      DCHECK_LT(handle_to_index(new_handle), first_block_of_evacuation_area);
 
-      Entry entry_to_evacuate = Load(HandleToIndex(old_handle));
-      entry_to_evacuate.ClearMarkBit();
-      Store(i, entry_to_evacuate);
+      Address entry_to_evacuate = load(handle_to_index(old_handle));
+      store(i, clear_mark_bit(entry_to_evacuate));
       *handle_location = new_handle;
 
 #ifdef DEBUG
@@ -182,9 +191,8 @@ uint32_t ExternalPointerTable::SweepAndCompact(Isolate* isolate) {
       // barriers, so we'd like to avoid them. See the compaction algorithm
       // explanation in external-pointer-table.h for more details.
       constexpr Address kClobberedEntryMarker = static_cast<Address>(-1);
-      const Entry kClobberedEntry = Entry::Decode(kClobberedEntryMarker);
-      DCHECK_NE(entry_to_evacuate, kClobberedEntry);
-      Store(HandleToIndex(old_handle), kClobberedEntry);
+      DCHECK_NE(entry_to_evacuate, kClobberedEntryMarker);
+      store(handle_to_index(old_handle), kClobberedEntryMarker);
 #endif  //  DEBUG
 
       // While we know that the old entry is now free, we don't add it to (the
@@ -193,14 +201,14 @@ uint32_t ExternalPointerTable::SweepAndCompact(Isolate* isolate) {
       // that the blocks out of which entries are evacuated will all be
       // decommitted anyway after this loop, which is usually the case unless
       // compaction was already aborted during marking.
-    } else if (!entry.IsMarked()) {
+    } else if (!is_marked(entry)) {
       current_freelist_size++;
-      Entry entry = Entry::MakeFreelistEntry(current_freelist_head);
-      Store(i, entry);
+      Address entry =
+          make_freelist_entry(current_freelist_head, current_freelist_size);
+      store(i, entry);
       current_freelist_head = i;
     } else {
-      entry.ClearMarkBit();
-      Store(i, entry);
+      store(i, clear_mark_bit(entry));
     }
 
     if (last_in_use_block == i) {
@@ -229,21 +237,13 @@ uint32_t ExternalPointerTable::SweepAndCompact(Isolate* isolate) {
     // attacker if they are still accessible, so use Decommit here which
     // guarantees that the pages become inaccessible and will be zeroed out.
     CHECK(root_space->DecommitPages(new_table_end, bytes_to_decommit));
-
-#if defined(LEAK_SANITIZER)
-    Address new_shadow_table_end = buffer_ +
-                                   kExternalPointerTableReservationSize +
-                                   new_capacity * sizeof(Address);
-    CHECK(root_space->DecommitPages(new_shadow_table_end, bytes_to_decommit));
-#endif  // LEAK_SANITIZER
   }
 
   if (IsCompacting()) {
     StopCompacting();
   }
 
-  Freelist new_freelist(current_freelist_head, current_freelist_size);
-  Release_SetFreelist(new_freelist);
+  base::Release_Store(&freelist_head_, current_freelist_head);
 
   uint32_t num_active_entries = capacity() - current_freelist_size;
   isolate->counters()->external_pointers_count()->AddSample(num_active_entries);
@@ -281,9 +281,9 @@ void ExternalPointerTable::StopCompacting() {
   set_start_of_evacuation_area(kNotCompactingMarker);
 }
 
-ExternalPointerTable::Freelist ExternalPointerTable::Grow(Isolate* isolate) {
-  // Freelist should be empty when calling this method.
-  DCHECK(Relaxed_GetFreelist().IsEmpty());
+uint32_t ExternalPointerTable::Grow(Isolate* isolate) {
+  // Freelist should be empty.
+  DCHECK_EQ(0, freelist_head_);
   // Mutex must be held when calling this method.
   mutex_->AssertHeld();
 
@@ -303,46 +303,23 @@ ExternalPointerTable::Freelist ExternalPointerTable::Grow(Isolate* isolate) {
         isolate, "Failed to grow the ExternalPointerTable backing buffer");
   }
 
-#if defined(LEAK_SANITIZER)
-  if (!root_space->SetPagePermissions(
-          buffer_ + kExternalPointerTableReservationSize +
-              old_capacity * sizeof(Address),
-          kBlockSize, PagePermissions::kReadWrite)) {
-    V8::FatalProcessOutOfMemory(
-        isolate, "Failed to grow the ExternalPointerTabl shadow table");
-  }
-#endif  // LEAK_SANITIZER
-
   set_capacity(new_capacity);
-
-  // Schedule GC when the table's utilization crosses one of these thresholds.
-  constexpr double kGCThresholds[] = {0.5, 0.75, 0.9, 0.95, 0.99};
-  constexpr double kMaxCapacity = static_cast<double>(kMaxExternalPointers);
-  double old_utilization = static_cast<double>(old_capacity) / kMaxCapacity;
-  double new_utilization = static_cast<double>(new_capacity) / kMaxCapacity;
-  for (double threshold : kGCThresholds) {
-    if (old_utilization < threshold && new_utilization >= threshold) {
-      isolate->heap()->ReportExternalMemoryPressure();
-      break;
-    }
-  }
 
   // Build freelist bottom to top, which might be more cache friendly.
   uint32_t start = std::max<uint32_t>(old_capacity, 1);  // Skip entry zero
   uint32_t last = new_capacity - 1;
+  uint32_t current_freelist_size = 1;
   for (uint32_t i = start; i < last; i++) {
-    uint32_t next_free_entry = i + 1;
-    Store(i, Entry::MakeFreelistEntry(next_free_entry));
+    uint32_t next_entry = i + 1;
+    store(i, make_freelist_entry(next_entry, current_freelist_size++));
   }
-  Store(last, Entry::MakeFreelistEntry(0));
+  store(last, make_freelist_entry(0, current_freelist_size));
 
   // This must be a release store to prevent reordering of the preceeding
   // stores to the freelist from being reordered past this store. See
-  // AllocateAndInitializeEntry() for more details.
-  Freelist new_freelist(start, last - start + 1);
-  Release_SetFreelist(new_freelist);
-
-  return new_freelist;
+  // Allocate() for more details.
+  base::Release_Store(&freelist_head_, start);
+  return start;
 }
 
 }  // namespace internal

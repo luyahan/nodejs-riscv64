@@ -256,31 +256,28 @@ Handle<Script> ParseInfo::CreateScript(
          flags().script_id() == Script::kTemporaryScriptId);
   Handle<Script> script =
       isolate->factory()->NewScriptWithId(source, flags().script_id());
-  DisallowGarbageCollection no_gc;
-  auto raw_script = *script;
   switch (natives) {
     case EXTENSION_CODE:
-      raw_script.set_type(Script::TYPE_EXTENSION);
+      script->set_type(Script::TYPE_EXTENSION);
       break;
     case INSPECTOR_CODE:
-      raw_script.set_type(Script::TYPE_INSPECTOR);
+      script->set_type(Script::TYPE_INSPECTOR);
       break;
     case NOT_NATIVES_CODE:
       break;
   }
-  raw_script.set_origin_options(origin_options);
-  raw_script.set_is_repl_mode(flags().is_repl_mode());
+  script->set_origin_options(origin_options);
+  script->set_is_repl_mode(flags().is_repl_mode());
 
   DCHECK_EQ(is_wrapped_as_function(), !maybe_wrapped_arguments.is_null());
   if (is_wrapped_as_function()) {
-    raw_script.set_wrapped_arguments(
-        *maybe_wrapped_arguments.ToHandleChecked());
+    script->set_wrapped_arguments(*maybe_wrapped_arguments.ToHandleChecked());
   } else if (flags().is_eval()) {
-    raw_script.set_compilation_type(Script::COMPILATION_TYPE_EVAL);
+    script->set_compilation_type(Script::COMPILATION_TYPE_EVAL);
   }
-  CheckFlagsForToplevelCompileFromScript(raw_script,
-                                         isolate->is_collecting_type_profile());
 
+  CheckFlagsForToplevelCompileFromScript(*script,
+                                         isolate->is_collecting_type_profile());
   return script;
 }
 
