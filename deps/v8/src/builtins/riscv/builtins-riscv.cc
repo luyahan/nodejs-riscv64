@@ -1748,6 +1748,25 @@ void OnStackReplacement(MacroAssembler* masm, OsrSourceTier source,
   // If the code object is null, just return to the caller.
   __ Ret(eq, a0, Operand(Smi::zero()));
   __ bind(&jump_to_optimized_code);
+  DCHECK_EQ(maybe_target_code, a0);  // Already in the right spot.
+
+  // OSR entry tracing.
+  {
+    Label next;
+    __ li(a1, ExternalReference::address_of_FLAG_trace_osr());
+    __ Lbu(a1, MemOperand(a1));
+    __ Branch(&next, eq, a1, Operand(zero_reg));
+
+    {
+      FrameScope scope(masm, StackFrame::INTERNAL);
+      __ Push(a0);  // Preserve the code object.
+      __ CallRuntime(Runtime::kTraceOptimizedOSREntry, 0);
+      __ Pop(a0);
+    }
+
+    __ bind(&next);
+  }
+
   if (source == OsrSourceTier::kInterpreter) {
     // Drop the handler frame that is be sitting on top of the actual
     // JavaScript frame. This is the case then OSR is triggered from bytecode.
@@ -1756,31 +1775,32 @@ void OnStackReplacement(MacroAssembler* masm, OsrSourceTier source,
   // Load deoptimization data from the code object.
   // <deopt_data> = <code>[#deoptimization_data_offset]
   __ LoadTaggedPointerField(
-      a1, MemOperand(a0, Code::kDeoptimizationDataOrInterpreterDataOffset -
-                             kHeapObjectTag));
+      a1,
+      FieldMemOperand(a0, Code::kDeoptimizationDataOrInterpreterDataOffset));
 
   // Load the OSR entrypoint offset from the deoptimization data.
   // <osr_offset> = <deopt_data>[#header_size + #osr_pc_offset]
-  __ SmiUntag(a1, MemOperand(a1, FixedArray::OffsetOfElementAt(
-                                     DeoptimizationData::kOsrPcOffsetIndex) -
-                                     kHeapObjectTag));
+  __ SmiUntagField(a1,
+                   MemOperand(a1, FixedArray::OffsetOfElementAt(
+                                      DeoptimizationData::kOsrPcOffsetIndex)));
 
   // Compute the target address = code_obj + header_size + osr_offset
   // <entry_addr> = <code_obj> + #header_size + <osr_offset>
   __ AddWord(a0, a0, a1);
   Generate_OSREntry(masm, a0, Operand(Code::kHeaderSize - kHeapObjectTag));
 }
+
 }  // namespace
 
 void Builtins::Generate_InterpreterOnStackReplacement(MacroAssembler* masm) {
-  using D = InterpreterOnStackReplacementDescriptor;
+  using D = OnStackReplacementDescriptor;
   static_assert(D::kParameterCount == 1);
   OnStackReplacement(masm, OsrSourceTier::kInterpreter,
                      D::MaybeTargetCodeRegister());
 }
 
 void Builtins::Generate_BaselineOnStackReplacement(MacroAssembler* masm) {
-  using D = BaselineOnStackReplacementDescriptor;
+  using D = OnStackReplacementDescriptor;
   static_assert(D::kParameterCount == 1);
 
   __ LoadWord(kContextRegister,
@@ -3642,10 +3662,12 @@ void Generate_BaselineOrInterpreterEntry(MacroAssembler* masm,
   Label install_baseline_code;
   // Check if feedback vector is valid. If not, call prepare for baseline to
   // allocate it.
-  UseScratchRegisterScope temps(masm);
-  Register type = temps.Acquire();
-  __ GetObjectType(feedback_vector, type, type);
+  {
+    UseScratchRegisterScope temps(masm);
+    Register type = temps.Acquire();
+    __ GetObjectType(feedback_vector, type, type);
   __ Branch(&install_baseline_code, ne, type, Operand(FEEDBACK_VECTOR_TYPE));
+  }
   // Save BytecodeOffset from the stack frame.
   __ SmiUntag(kInterpreterBytecodeOffsetRegister,
               MemOperand(fp, InterpreterFrameConstants::kBytecodeOffsetFromFp));
