@@ -1079,6 +1079,27 @@ void Builtins::Generate_BaselineOutOfLinePrologue(MacroAssembler* masm) {
   temps.Exclude({kScratchReg, kScratchReg2});
 }
 
+// static
+void Builtins::Generate_BaselineOutOfLinePrologueDeopt(MacroAssembler* masm) {
+  // We're here because we got deopted during BaselineOutOfLinePrologue's stack
+  // check. Undo all its frame creation and call into the interpreter instead.
+
+  // Drop bytecode offset (was the feedback vector but got replaced during
+  // deopt) and bytecode array.
+  __ AddWord(sp, sp, Operand(2 * kPointerSize));
+
+  // Context, closure, argc.
+  __ Pop(kContextRegister, kJavaScriptCallTargetRegister,
+         kJavaScriptCallArgCountRegister);
+
+  // Drop frame pointer
+  __ LeaveFrame(StackFrame::BASELINE);
+
+  // Enter the interpreter.
+  __ TailCallBuiltin(Builtin::kInterpreterEntryTrampoline);
+}
+
+
 // Generate code for entering a JS function with the interpreter.
 // On entry to the function the receiver and arguments have been pushed on the
 // stack left to right.
