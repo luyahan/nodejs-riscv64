@@ -365,6 +365,18 @@ constexpr auto BaselineLeaveFrameDescriptor::registers() {
 }
 
 // static
+constexpr auto OnStackReplacementDescriptor::registers() {
+  return DefaultRegisterArray();
+}
+
+// static
+constexpr Register OnStackReplacementDescriptor::MaybeTargetCodeRegister() {
+  // Picking the first register on purpose because it's convenient that this
+  // register is the same as the platform's return-value register.
+  return registers()[0];
+}
+
+// static
 constexpr auto BaselineOnStackReplacementDescriptor::registers() {
   return DefaultRegisterArray();
 }

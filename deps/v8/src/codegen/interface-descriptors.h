@@ -32,7 +32,7 @@ namespace internal {
   V(ArraySingleArgumentConstructor)                  \
   V(AsyncFunctionStackParameter)                     \
   V(BaselineLeaveFrame)                              \
-  V(BaselineOnStackReplacement)                      \
+    V(BaselineOnStackReplacement)  \
   V(BaselineOutOfLinePrologue)                       \
   V(BigIntToI32Pair)                                 \
   V(BigIntToI64)                                     \
@@ -82,7 +82,7 @@ namespace internal {
   V(InterpreterCEntry1)                              \
   V(InterpreterCEntry2)                              \
   V(InterpreterDispatch)                             \
-  V(InterpreterOnStackReplacement)                   \
+    V(InterpreterOnStackReplacement)  \
   V(InterpreterPushArgsThenCall)                     \
   V(InterpreterPushArgsThenConstruct)                \
   V(JSTrampoline)                                    \
@@ -104,6 +104,7 @@ namespace internal {
   V(LookupBaseline)                                  \
   V(NewHeapNumber)                                   \
   V(NoContext)                                       \
+  V(OnStackReplacement)                              \
   V(RestartFrameTrampoline)                          \
   V(ResumeGenerator)                                 \
   V(ResumeGeneratorBaseline)                         \
@@ -1718,6 +1719,18 @@ class BaselineLeaveFrameDescriptor
 
   static constexpr inline Register ParamsSizeRegister();
   static constexpr inline Register WeightRegister();
+
+  static constexpr inline auto registers();
+};
+
+class OnStackReplacementDescriptor
+    : public StaticCallInterfaceDescriptor<OnStackReplacementDescriptor> {
+ public:
+  DEFINE_PARAMETERS(kMaybeTargetCode)
+  DEFINE_PARAMETER_TYPES(MachineType::AnyTagged())  // kMaybeTargetCode
+  DECLARE_DESCRIPTOR(OnStackReplacementDescriptor)
+
+  static constexpr inline Register MaybeTargetCodeRegister();
 
   static constexpr inline auto registers();
 };
