@@ -2358,6 +2358,16 @@ void TurboAssembler::CodeDataContainerFromCodeT(Register destination,
   }
 }
 
+void TurboAssembler::CodeDataContainerFromCodeT(Register destination,
+                                                Register codet) {
+  if (V8_EXTERNAL_CODE_SPACE_BOOL) {
+    Move(destination, codet);
+  } else {
+    LoadTaggedPointerField(destination,
+                           FieldOperand(codet, Code::kCodeDataContainerOffset));
+  }
+}
+
 void TurboAssembler::PextrdPreSse41(Register dst, XMMRegister src,
                                     uint8_t imm8) {
   if (imm8 == 0) {
