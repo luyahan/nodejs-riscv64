@@ -1775,7 +1775,7 @@ void Builtins::Generate_InterpreterOnStackReplacement(MacroAssembler* masm) {
 }
 
 void Builtins::Generate_BaselineOnStackReplacement(MacroAssembler* masm) {
-  using D = BaselineOnStackReplacementDescriptor;
+  using D = OnStackReplacementDescriptor;
   static_assert(D::kParameterCount == 1);
 
   __ LoadWord(kContextRegister,
