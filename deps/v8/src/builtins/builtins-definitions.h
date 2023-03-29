@@ -190,7 +190,7 @@ namespace internal {
   /* Baseline Compiler */                                                      \
   ASM(BaselineOutOfLinePrologue, BaselineOutOfLinePrologue)                    \
   ASM(BaselineOutOfLinePrologueDeopt, Void)                                    \
-  ASM(BaselineOnStackReplacement, OnStackReplacement)                          \
+  ASM(BaselineOnStackReplacement, BaselineOnStackReplacement)                  \
   ASM(BaselineLeaveFrame, BaselineLeaveFrame)                                  \
   ASM(BaselineOrInterpreterEnterAtBytecode, Void)                              \
   ASM(BaselineOrInterpreterEnterAtNextBytecode, Void)                          \

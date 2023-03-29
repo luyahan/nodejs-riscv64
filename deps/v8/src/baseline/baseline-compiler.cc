@@ -1911,7 +1911,7 @@ void BaselineCompiler::VisitCreateRestParameter() {
 
 void BaselineCompiler::VisitJumpLoop() {
   Label osr_armed, osr_not_armed;
-  using D = OnStackReplacementDescriptor;
+  using D = BaselineOnStackReplacementDescriptor;
   Register feedback_vector = Register::no_reg();
   Register osr_state = Register::no_reg();
   const int loop_depth = iterator().GetImmediateOperand(1);

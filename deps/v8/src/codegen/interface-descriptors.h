@@ -32,6 +32,7 @@ namespace internal {
   V(ArraySingleArgumentConstructor)                  \
   V(AsyncFunctionStackParameter)                     \
   V(BaselineLeaveFrame)                              \
+  V(BaselineOnStackReplacement) \
   V(BaselineOutOfLinePrologue)                       \
   V(BigIntToI32Pair)                                 \
   V(BigIntToI64)                                     \
@@ -1739,6 +1740,19 @@ class OnStackReplacementDescriptor
   DEFINE_PARAMETERS(kMaybeTargetCode)
   DEFINE_PARAMETER_TYPES(MachineType::AnyTagged())  // kMaybeTargetCode
   DECLARE_DESCRIPTOR(OnStackReplacementDescriptor)
+
+  static constexpr inline Register MaybeTargetCodeRegister();
+
+  static constexpr inline auto registers();
+};
+
+class BaselineOnStackReplacementDescriptor
+    : public StaticCallInterfaceDescriptor<
+          BaselineOnStackReplacementDescriptor> {
+ public:
+  DEFINE_PARAMETERS_NO_CONTEXT(kMaybeTargetCode)
+  DEFINE_PARAMETER_TYPES(MachineType::AnyTagged())  // kMaybeTargetCode
+  DECLARE_DESCRIPTOR(BaselineOnStackReplacementDescriptor)
 
   static constexpr inline Register MaybeTargetCodeRegister();
 
