@@ -1957,6 +1957,7 @@ void BaselineCompiler::VisitJumpLoop() {
                   &osr_not_armed, Label::kNear);
 
     __ Bind(&osr);
+    __ Nop();
     CallBuiltin<Builtin::kBaselineOnStackReplacement>(maybe_target_code);
     __ Jump(&osr_not_armed, Label::kNear);
   }

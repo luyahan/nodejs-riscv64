@@ -39,6 +39,7 @@ class BaselineAssembler {
   V8_INLINE void RecordComment(const char* string);
   inline void Trap();
   inline void DebugBreak();
+  inline void Nop();
 
   template <typename Field>
   inline void DecodeField(Register reg);
