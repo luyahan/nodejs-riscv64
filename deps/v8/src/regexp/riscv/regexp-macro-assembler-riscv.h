@@ -170,7 +170,7 @@ class V8_EXPORT_PRIVATE RegExpMacroAssemblerRISCV
 
   // The register containing the backtrack stack top. Provides a meaningful
   // name to the register.
-  static constexpr Register backtrack_stackpointer() { return s7; }
+  static constexpr Register backtrack_stackpointer() { return s8; }
 
   // Register holding pointer to the current code object.
   static constexpr Register code_pointer() { return s1; }

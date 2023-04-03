@@ -713,7 +713,7 @@ Handle<HeapObject> RegExpMacroAssemblerRISCV::GetCode(Handle<String> source) {
 
     // Initialize backtrack stack pointer. It must not be clobbered from here
     // on. Note the backtrack_stackpointer is callee-saved.
-    static_assert(backtrack_stackpointer() == s7);
+    static_assert(backtrack_stackpointer() == s8);
     LoadRegExpStackPointerFromMemory(backtrack_stackpointer());
     // Store the regexp base pointer - we'll later restore it / write it to
     // memory when returning from this irregexp code object.

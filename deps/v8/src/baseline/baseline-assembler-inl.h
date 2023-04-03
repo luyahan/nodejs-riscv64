@@ -61,6 +61,7 @@ void BaselineAssembler::RecordComment(const char* string) {
   __ RecordComment(string);
 }
 void BaselineAssembler::Trap() { __ Trap(); }
+void BaselineAssembler::Nop() { __ nop(); }
 void BaselineAssembler::DebugBreak() { __ DebugBreak(); }
 void BaselineAssembler::CallRuntime(Runtime::FunctionId function, int nargs) {
   __ CallRuntime(function, nargs);
