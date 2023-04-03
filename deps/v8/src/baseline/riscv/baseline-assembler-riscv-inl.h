@@ -93,7 +93,7 @@ void BaselineAssembler::JumpTarget() {
 }
 
 void BaselineAssembler::Jump(Label* target, Label::Distance distance) {
-  __ jmp(target);
+  __ Branch(target, cc_always, zero_reg, Operand(zero_reg), distance);
 }
 void BaselineAssembler::JumpIfRoot(Register value, RootIndex index,
                                    Label* target, Label::Distance) {
@@ -184,16 +184,16 @@ void BaselineAssembler::JumpIfTagged(Condition cc, Register value,
 }
 void BaselineAssembler::JumpIfTagged(Condition cc, MemOperand operand,
                                      Register value, Label* target,
-                                     Label::Distance) {
+                                     Label::Distance distance) {
   // todo: compress pointer
   ScratchRegisterScope temps(this);
   Register scratch = temps.AcquireScratch();
   __ LoadWord(scratch, operand);
-  __ Branch(target, AsMasmCondition(cc), scratch, Operand(value));
+  __ Branch(target, AsMasmCondition(cc), scratch, Operand(value), distance);
 }
 void BaselineAssembler::JumpIfByte(Condition cc, Register value, int32_t byte,
-                                   Label* target, Label::Distance) {
-  __ Branch(target, AsMasmCondition(cc), value, Operand(byte));
+                                   Label* target, Label::Distance distance) {
+  __ Branch(target, AsMasmCondition(cc), value, Operand(byte), distance);
 }
 
 void BaselineAssembler::Move(interpreter::Register output, Register source) {
@@ -374,7 +374,7 @@ void BaselineAssembler::TryLoadOptimizedOsrCode(Register scratch_and_result,
                                                 Register feedback_vector,
                                                 FeedbackSlot slot,
                                                 Label* on_result,
-                                                Label::Distance) {
+                                                Label::Distance distance) {
   Label fallthrough, clear_slot;
   LoadTaggedPointerField(scratch_and_result, feedback_vector,
                          FeedbackVector::OffsetOfElementAt(slot.ToInt()));
@@ -385,7 +385,7 @@ void BaselineAssembler::TryLoadOptimizedOsrCode(Register scratch_and_result,
     ScratchRegisterScope temps(this);
     __ JumpIfCodeTIsMarkedForDeoptimization(
         scratch_and_result, temps.AcquireScratch(), &clear_slot);
-    Jump(on_result);
+    Jump(on_result, distance);
   }
 
   __ bind(&clear_slot);
