@@ -117,29 +117,29 @@ void BaselineAssembler::JumpIfImmediate(Condition cc, Register left, int right,
   JumpIf(cc, left, Operand(right), target, distance);
 }
 void BaselineAssembler::TestAndBranch(Register value, int mask, Condition cc,
-                                      Label* target, Label::Distance) {
+                                      Label* target, Label::Distance distance) {
   ScratchRegisterScope temps(this);
   Register tmp = temps.AcquireScratch();
   __ And(tmp, value, Operand(mask));
-  __ Branch(target, AsMasmCondition(cc), tmp, Operand(zero_reg));
+  __ Branch(target, AsMasmCondition(cc), tmp, Operand(zero_reg), distance);
 }
 
 void BaselineAssembler::JumpIf(Condition cc, Register lhs, const Operand& rhs,
-                               Label* target, Label::Distance) {
-  __ Branch(target, AsMasmCondition(cc), lhs, Operand(rhs));
+                               Label* target, Label::Distance distance) {
+  __ Branch(target, AsMasmCondition(cc), lhs, Operand(rhs) , distance);
 }
 void BaselineAssembler::JumpIfObjectType(Condition cc, Register object,
                                          InstanceType instance_type,
                                          Register map, Label* target,
-                                         Label::Distance) {
+                                         Label::Distance distance) {
   ScratchRegisterScope temps(this);
   Register type = temps.AcquireScratch();
   __ GetObjectType(object, map, type);
-  __ Branch(target, AsMasmCondition(cc), type, Operand(instance_type));
+  __ Branch(target, AsMasmCondition(cc), type, Operand(instance_type), distance);
 }
 void BaselineAssembler::JumpIfInstanceType(Condition cc, Register map,
                                            InstanceType instance_type,
-                                           Label* target, Label::Distance) {
+                                           Label* target, Label::Distance distance) {
   ScratchRegisterScope temps(this);
   Register type = temps.AcquireScratch();
   if (v8_flags.debug_code) {
@@ -148,52 +148,52 @@ void BaselineAssembler::JumpIfInstanceType(Condition cc, Register map,
     __ Assert(eq, AbortReason::kUnexpectedValue, type, Operand(MAP_TYPE));
   }
   __ LoadWord(type, FieldMemOperand(map, Map::kInstanceTypeOffset));
-  __ Branch(target, AsMasmCondition(cc), type, Operand(instance_type));
+  __ Branch(target, AsMasmCondition(cc), type, Operand(instance_type), distance);
 }
 void BaselineAssembler::JumpIfPointer(Condition cc, Register value,
                                       MemOperand operand, Label* target,
-                                      Label::Distance) {
+                                      Label::Distance distance) {
   ScratchRegisterScope temps(this);
   Register temp = temps.AcquireScratch();
   __ LoadWord(temp, operand);
-  __ Branch(target, AsMasmCondition(cc), value, Operand(temp));
+  __ Branch(target, AsMasmCondition(cc), value, Operand(temp), distance);
 }
 void BaselineAssembler::JumpIfSmi(Condition cc, Register value, Smi smi,
-                                  Label* target, Label::Distance) {
+                                  Label* target, Label::Distance distance) {
   ScratchRegisterScope temps(this);
   Register temp = temps.AcquireScratch();
   __ li(temp, Operand(smi));
   __ SmiUntag(temp);
-  __ Branch(target, AsMasmCondition(cc), value, Operand(temp));
+  __ Branch(target, AsMasmCondition(cc), value, Operand(temp), distance);
 }
 void BaselineAssembler::JumpIfSmi(Condition cc, Register lhs, Register rhs,
-                                  Label* target, Label::Distance) {
+                                  Label* target, Label::Distance distance) {
   // todo: compress pointer
   __ AssertSmi(lhs);
   __ AssertSmi(rhs);
-  __ Branch(target, AsMasmCondition(cc), lhs, Operand(rhs));
+  __ Branch(target, AsMasmCondition(cc), lhs, Operand(rhs), distance);
 }
 void BaselineAssembler::JumpIfTagged(Condition cc, Register value,
                                      MemOperand operand, Label* target,
-                                     Label::Distance) {
+                                     Label::Distance distance) {
   // todo: compress pointer
   ScratchRegisterScope temps(this);
   Register scratch = temps.AcquireScratch();
   __ LoadWord(scratch, operand);
-  __ Branch(target, AsMasmCondition(cc), value, Operand(scratch));
+  __ Branch(target, AsMasmCondition(cc), value, Operand(scratch), distance);
 }
 void BaselineAssembler::JumpIfTagged(Condition cc, MemOperand operand,
                                      Register value, Label* target,
-                                     Label::Distance) {
+                                     Label::Distance distance) {
   // todo: compress pointer
   ScratchRegisterScope temps(this);
   Register scratch = temps.AcquireScratch();
   __ LoadWord(scratch, operand);
-  __ Branch(target, AsMasmCondition(cc), scratch, Operand(value));
+  __ Branch(target, AsMasmCondition(cc), scratch, Operand(value), distance);
 }
 void BaselineAssembler::JumpIfByte(Condition cc, Register value, int32_t byte,
-                                   Label* target, Label::Distance) {
-  __ Branch(target, AsMasmCondition(cc), value, Operand(byte));
+                                   Label* target, Label::Distance distance) {
+  __ Branch(target, AsMasmCondition(cc), value, Operand(byte), distance);
 }
 
 void BaselineAssembler::Move(interpreter::Register output, Register source) {

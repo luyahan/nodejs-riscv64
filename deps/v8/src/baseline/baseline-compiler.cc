@@ -1955,7 +1955,6 @@ void BaselineCompiler::VisitJumpLoop() {
     __ DecodeField<FeedbackVector::OsrUrgencyBits>(scratch1);
     __ JumpIfByte(Condition::kUnsignedLessThanEqual, scratch1, loop_depth,
                   &osr_not_armed, Label::kNear);
-
     __ Bind(&osr);
     CallBuiltin<Builtin::kBaselineOnStackReplacement>(maybe_target_code);
     __ Jump(&osr_not_armed, Label::kNear);
