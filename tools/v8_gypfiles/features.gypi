@@ -282,11 +282,16 @@
 
     # Enable advanced BigInt algorithms, costing about 10-30 KiB binary size
     # depending on platform.
-    'v8_advanced_bigint_algorithms%': 1
+    'v8_advanced_bigint_algorithms%': 1,
+
+    'v8_code_comments%': 1,
   },
 
   'target_defaults': {
     'conditions': [
+      ['v8_code_comments==1', {
+        'defines': ['V8_CODE_COMMENTS',]
+      }],
       ['v8_embedder_string!=""', {
         'defines': ['V8_EMBEDDER_STRING="<(v8_embedder_string)"',],
       }],
